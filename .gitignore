@@ -1,0 +1,25 @@
+# dependencias
+node_modules/
+
+# builds
+dist/
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+
+# prisma client generado
+apps/api/src/generated/
+
+# entorno
+.env
+.env.local
+.env.*.local
+
+# varios
+coverage/
+*.log
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json

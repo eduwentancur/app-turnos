@@ -1,0 +1,220 @@
+// Sistema de turnos para barberías — modelo de datos
+// Multi-tenant: toda entidad de negocio lleva barbershopId.
+// Fechas/horas absolutas en UTC (timestamptz); horarios semanales en hora local de la barbería.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  OWNER
+  STAFF
+}
+
+enum AppointmentStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+  NO_SHOW
+}
+
+enum AppointmentSource {
+  ADMIN
+  WHATSAPP
+}
+
+model Barbershop {
+  id                String   @id @default(uuid()) @db.Uuid
+  name              String
+  slug              String   @unique
+  timezone          String   @default("America/Argentina/Buenos_Aires")
+  address           String?
+  phone             String?
+  /// Granularidad (min) de los horarios ofrecidos al cliente
+  slotStepMinutes   Int      @default(30)
+  /// Corte de franjas para agrupar horarios ("HH:mm", hora local)
+  afternoonStartsAt String   @default("14:00")
+  eveningStartsAt   String   @default("19:00")
+  createdAt         DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime @updatedAt @db.Timestamptz(3)
+
+  users        User[]
+  barbers      Barber[]
+  services     Service[]
+  customers    Customer[]
+  appointments Appointment[]
+  workingHours WorkingHours[]
+  timeOffs     TimeOff[]
+
+  @@map("barbershops")
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  barbershopId String   @db.Uuid
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         UserRole @default(OWNER)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(3)
+
+  barbershop    Barbershop     @relation(fields: [barbershopId], references: [id])
+  refreshTokens RefreshToken[]
+
+  @@index([barbershopId])
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  tokenHash String    @unique
+  expiresAt DateTime  @db.Timestamptz(3)
+  revokedAt DateTime? @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model Barber {
+  id           String   @id @default(uuid()) @db.Uuid
+  barbershopId String   @db.Uuid
+  name         String
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(3)
+
+  barbershop   Barbershop      @relation(fields: [barbershopId], references: [id])
+  services     BarberService[]
+  workingHours WorkingHours[]
+  timeOffs     TimeOff[]
+  appointments Appointment[]
+
+  @@index([barbershopId])
+  @@map("barbers")
+}
+
+model Service {
+  id              String   @id @default(uuid()) @db.Uuid
+  barbershopId    String   @db.Uuid
+  name            String
+  description     String?
+  durationMinutes Int
+  price           Decimal  @db.Decimal(10, 2)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(3)
+
+  barbershop   Barbershop      @relation(fields: [barbershopId], references: [id])
+  barbers      BarberService[]
+  appointments Appointment[]
+
+  @@unique([barbershopId, name])
+  @@map("services")
+}
+
+model BarberService {
+  barberId  String @db.Uuid
+  serviceId String @db.Uuid
+
+  barber  Barber  @relation(fields: [barberId], references: [id], onDelete: Cascade)
+  service Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@id([barberId, serviceId])
+  @@map("barber_services")
+}
+
+/// Franja semanal recurrente (varias por día permiten descansos, ej. 9-14 y 16-20).
+/// barberId null = horario general de la barbería.
+model WorkingHours {
+  id           String  @id @default(uuid()) @db.Uuid
+  barbershopId String  @db.Uuid
+  barberId     String? @db.Uuid
+  /// 0 = domingo ... 6 = sábado
+  dayOfWeek    Int
+  /// "HH:mm" en hora local de la barbería
+  startTime    String
+  endTime      String
+
+  barbershop Barbershop @relation(fields: [barbershopId], references: [id])
+  barber     Barber?    @relation(fields: [barberId], references: [id], onDelete: Cascade)
+
+  @@index([barbershopId, dayOfWeek])
+  @@map("working_hours")
+}
+
+/// Bloqueos puntuales: feriados, vacaciones, trámites.
+/// barberId null = cierra toda la barbería.
+model TimeOff {
+  id           String   @id @default(uuid()) @db.Uuid
+  barbershopId String   @db.Uuid
+  barberId     String?  @db.Uuid
+  startsAt     DateTime @db.Timestamptz(3)
+  endsAt       DateTime @db.Timestamptz(3)
+  reason       String?
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+
+  barbershop Barbershop @relation(fields: [barbershopId], references: [id])
+  barber     Barber?    @relation(fields: [barberId], references: [id], onDelete: Cascade)
+
+  @@index([barbershopId, startsAt])
+  @@map("time_offs")
+}
+
+model Customer {
+  id           String   @id @default(uuid()) @db.Uuid
+  barbershopId String   @db.Uuid
+  name         String
+  /// Formato E.164, ej. +5493764123456
+  phone        String
+  notes        String?
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(3)
+
+  barbershop   Barbershop    @relation(fields: [barbershopId], references: [id])
+  appointments Appointment[]
+
+  @@unique([barbershopId, phone])
+  @@map("customers")
+}
+
+/// La constraint anti-solapamiento (EXCLUDE USING gist) vive en la migración SQL inicial:
+/// Prisma no soporta exclusion constraints en el schema.
+model Appointment {
+  id             String            @id @default(uuid()) @db.Uuid
+  barbershopId   String            @db.Uuid
+  customerId     String            @db.Uuid
+  barberId       String            @db.Uuid
+  serviceId      String            @db.Uuid
+  startsAt       DateTime          @db.Timestamptz(3)
+  endsAt         DateTime          @db.Timestamptz(3)
+  status         AppointmentStatus @default(CONFIRMED)
+  source         AppointmentSource @default(ADMIN)
+  /// Precio congelado al reservar (el pago se maneja en el local)
+  priceAtBooking Decimal           @db.Decimal(10, 2)
+  notes          String?
+  cancelledAt    DateTime?         @db.Timestamptz(3)
+  createdAt      DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime          @updatedAt @db.Timestamptz(3)
+
+  barbershop Barbershop @relation(fields: [barbershopId], references: [id])
+  customer   Customer   @relation(fields: [customerId], references: [id])
+  barber     Barber     @relation(fields: [barberId], references: [id])
+  service    Service    @relation(fields: [serviceId], references: [id])
+
+  @@index([barbershopId, startsAt])
+  @@index([barberId, startsAt])
+  @@index([customerId])
+  @@map("appointments")
+}

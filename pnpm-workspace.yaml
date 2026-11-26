@@ -1,0 +1,11 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# pnpm 10 bloquea scripts de instalación por defecto: habilitamos solo los necesarios
+onlyBuiltDependencies:
+  - "@nestjs/core"
+  - "@prisma/engines"
+  - prisma
+  - sharp
+  - unrs-resolver
