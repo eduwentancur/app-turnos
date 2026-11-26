@@ -96,6 +96,19 @@ pnpm dev              # API + web en paralelo
 | `GET /api/auth/me` | Usuario autenticado |
 | `PATCH /api/auth/password` | Cambia la contraseña y cierra las demás sesiones |
 
+## Servicios
+
+| Endpoint | Rol | Descripción |
+|---|---|---|
+| `GET /api/services?includeInactive=true` | Todos | Lista (por defecto solo activos) |
+| `GET /api/services/:id` | Todos | Detalle |
+| `POST /api/services` | OWNER | Alta (se asigna a todos los barberos activos) |
+| `PATCH /api/services/:id` | OWNER | Edición parcial / activar-desactivar |
+| `DELETE /api/services/:id` | OWNER | Solo si no tiene turnos; si tiene, se desactiva |
+
+- Nombre: 2–24 caracteres (límite de una fila de lista de WhatsApp), único por barbería sin distinguir mayúsculas.
+- Duración: 5–480 min, múltiplo de 5. Precio: ≥ 0, hasta 2 decimales.
+
 ## Notas
 
 - Las exclusion constraints no se pueden declarar en `schema.prisma`; viven en SQL dentro de las migraciones. Si en el futuro se regeneran migraciones, hay que conservarlas.
@@ -104,5 +117,5 @@ pnpm dev              # API + web en paralelo
 ## Roadmap
 
 1. ✅ Etapa 1 — Preparación: monorepo, Prisma, PostgreSQL, health check
-2. 🔄 Etapa 2 — MVP: ✅ auth admin · ⏳ servicios, horarios, disponibilidad, turnos, calendario
+2. 🔄 Etapa 2 — MVP: ✅ auth admin · ✅ servicios · ⏳ horarios, disponibilidad, turnos, calendario
 3. ⏳ Etapa 3 — WhatsApp Cloud API: webhooks, bot de reservas, confirmaciones y recordatorios

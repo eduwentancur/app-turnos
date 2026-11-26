@@ -6,6 +6,7 @@ import { validateEnv } from './config/env.validation.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { HealthModule } from './modules/health/health.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
+import { ServicesModule } from './modules/services/services.module.js';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { AuthModule } from './modules/auth/auth.module.js';
     PrismaModule,
     HealthModule,
     AuthModule,
+    ServicesModule,
   ],
   providers: [
     // useExisting permite reemplazar el guard en tests (overrideProvider)

@@ -7,6 +7,11 @@ import {
   Logger,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import {
+  isForeignKeyViolation,
+  isRecordNotFound,
+  isUniqueViolation,
+} from '../prisma-errors.js';
 
 export interface ErrorResponse {
   statusCode: number;
@@ -60,6 +65,21 @@ export class AllExceptionsFilter implements ExceptionFilter {
         statusCode,
         error: r.error ?? exception.name,
         message: r.message ?? exception.message,
+      };
+    }
+
+    // Red de seguridad: errores de base no traducidos por el servicio
+    if (isUniqueViolation(exception)) {
+      return { statusCode: HttpStatus.CONFLICT, error: 'Conflict', message: 'El registro ya existe' };
+    }
+    if (isRecordNotFound(exception)) {
+      return { statusCode: HttpStatus.NOT_FOUND, error: 'Not Found', message: 'Registro no encontrado' };
+    }
+    if (isForeignKeyViolation(exception)) {
+      return {
+        statusCode: HttpStatus.CONFLICT,
+        error: 'Conflict',
+        message: 'El registro está en uso y no se puede modificar así',
       };
     }
 

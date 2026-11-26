@@ -7,6 +7,7 @@ import { AuthService } from './auth.service.js';
 import { PasswordService } from './password.service.js';
 import { RefreshTokenService } from './refresh-token.service.js';
 import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
+import { RolesGuard } from './guards/roles.guard.js';
 import type { Env } from '../../config/env.validation.js';
 
 @Module({
@@ -25,7 +26,9 @@ import type { Env } from '../../config/env.validation.js';
     AuthService,
     PasswordService,
     RefreshTokenService,
+    // Orden: primero autenticación, después autorización por rol
     { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_GUARD, useClass: RolesGuard },
   ],
   exports: [PasswordService],
 })
