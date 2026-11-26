@@ -52,6 +52,9 @@ model Barbershop {
   workingHours WorkingHours[]
   timeOffs     TimeOff[]
 
+  whatsappConversations     WhatsappConversation[]
+  whatsappProcessedMessages WhatsappProcessedMessage[]
+
   @@map("barbershops")
 }
 
@@ -217,4 +220,37 @@ model Appointment {
   @@index([barberId, startsAt])
   @@index([customerId])
   @@map("appointments")
+}
+
+/// Estado de la conversación del bot con cada número de WhatsApp.
+model WhatsappConversation {
+  id            String   @id @default(uuid()) @db.Uuid
+  barbershopId  String   @db.Uuid
+  /// Teléfono del cliente en E.164
+  phone         String
+  /// Paso actual del flujo (IDLE, PICK_SERVICE, PICK_DAY, ...)
+  state         String   @default("IDLE")
+  /// Datos del flujo en curso (servicio elegido, fecha, página, etc.)
+  context       Json     @default("{}")
+  lastMessageAt DateTime @default(now()) @db.Timestamptz(3)
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(3)
+
+  barbershop Barbershop @relation(fields: [barbershopId], references: [id])
+
+  @@unique([barbershopId, phone])
+  @@map("whatsapp_conversations")
+}
+
+/// IDs de mensajes de WhatsApp ya procesados: Meta puede reenviar el mismo webhook.
+model WhatsappProcessedMessage {
+  /// ID del mensaje de WhatsApp (wamid...)
+  id           String   @id
+  barbershopId String   @db.Uuid
+  receivedAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  barbershop Barbershop @relation(fields: [barbershopId], references: [id])
+
+  @@index([receivedAt])
+  @@map("whatsapp_processed_messages")
 }

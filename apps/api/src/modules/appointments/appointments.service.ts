@@ -71,6 +71,18 @@ export class AppointmentsService {
     return rows.map((r) => this.toResponse(r, tz));
   }
 
+  /** Próximos turnos activos de un cliente (para "Mis turnos" en WhatsApp). */
+  async listUpcomingForCustomer(barbershopId: string, customerId: string, limit = 10): Promise<AppointmentResponse[]> {
+    const tz = await this.timezone(barbershopId);
+    const rows = await this.prisma.appointment.findMany({
+      where: { barbershopId, customerId, status: { in: [...ACTIVE] }, startsAt: { gt: new Date() } },
+      include,
+      orderBy: { startsAt: 'asc' },
+      take: limit,
+    });
+    return rows.map((r) => this.toResponse(r, tz));
+  }
+
   async findOne(barbershopId: string, id: string): Promise<AppointmentResponse> {
     const tz = await this.timezone(barbershopId);
     return this.toResponse(await this.getOwned(barbershopId, id), tz);

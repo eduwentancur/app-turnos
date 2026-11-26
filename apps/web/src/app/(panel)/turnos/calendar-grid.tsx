@@ -96,6 +96,7 @@ export function CalendarGrid({
                       style={{ top: Math.max(top, 0), height: h }}
                       title={`${a.localStart} ${a.customer.name} · ${a.service.name}`}
                     >
+                      {a.source === "WHATSAPP" && <span aria-label="Reservado por WhatsApp">📲 </span>}
                       <span className="font-semibold tabular-nums">{a.localStart}</span>{" "}
                       <span className="font-medium">{a.customer.name}</span>
                       {h > 34 && <span className="block truncate opacity-80">{a.service.name}</span>}

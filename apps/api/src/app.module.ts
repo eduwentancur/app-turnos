@@ -12,6 +12,7 @@ import { AvailabilityModule } from './modules/availability/availability.module.j
 import { BarbersModule } from './modules/barbers/barbers.module.js';
 import { CustomersModule } from './modules/customers/customers.module.js';
 import { AppointmentsModule } from './modules/appointments/appointments.module.js';
+import { WhatsappModule } from './modules/whatsapp/whatsapp.module.js';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { AppointmentsModule } from './modules/appointments/appointments.module.j
     BarbersModule,
     CustomersModule,
     AppointmentsModule,
+    WhatsappModule,
   ],
   providers: [
     // useExisting permite reemplazar el guard en tests (overrideProvider)

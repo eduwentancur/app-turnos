@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert, Button, FullScreenLoader, Modal } from "@/components/ui";
 import { useAuth } from "@/lib/auth/auth-context";
 import { errorMessage, parseApiError } from "@/lib/api-client";
@@ -61,9 +61,18 @@ function Calendar({ week, services }: { week: Week; services: Service[] }) {
     return Array.from({ length: 7 }, (_, i) => addDays(monday, i));
   }, [view, anchor]);
 
+  const onNewFromWhatsapp = useCallback((fresh: Appointment[]) => {
+    const a = fresh[0];
+    setNotice(
+      fresh.length === 1
+        ? `📲 Nuevo turno por WhatsApp: ${a.customer.name}, ${formatDate(a.localDate)} a las ${a.localStart}.`
+        : `📲 Entraron ${fresh.length} turnos nuevos por WhatsApp.`,
+    );
+  }, []);
   const { appointments, loading, error, create, reschedule, cancel, setStatus } = useAppointments(
     days[0],
     days[days.length - 1],
+    onNewFromWhatsapp,
   );
 
   // Rango horario visible: desde la apertura más temprana hasta el cierre más tardío

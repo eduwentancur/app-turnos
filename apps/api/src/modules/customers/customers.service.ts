@@ -161,6 +161,16 @@ export class CustomersService {
     }
   }
 
+  /** Cliente por teléfono (cualquier formato), o null si no existe. */
+  async findByPhone(barbershopId: string, rawPhone: string): Promise<CustomerResponse | null> {
+    const phone = normalizePhone(rawPhone);
+    if (!phone) return null;
+    return this.prisma.customer.findUnique({
+      where: { barbershopId_phone: { barbershopId, phone } },
+      select: { id: true, name: true, phone: true, notes: true },
+    });
+  }
+
   /**
    * Busca el cliente por teléfono y lo crea si no existe (el teléfono es la identidad,
    * igual que en WhatsApp). Si ya existe y llega otro nombre, se actualiza.

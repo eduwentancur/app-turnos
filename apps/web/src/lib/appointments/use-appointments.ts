@@ -1,12 +1,22 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/lib/auth/auth-context";
 import { errorMessage, parseApiError } from "@/lib/api-client";
 import type { Appointment, CreateAppointmentInput } from "./types";
 
-/** Turnos de un rango de fechas locales (inclusive). */
-export function useAppointments(from: string, to: string) {
+const POLL_MS = 30_000;
+
+/**
+ * Turnos de un rango de fechas locales (inclusive).
+ * Se actualiza solo cada 30 s (mientras la pestaña está visible) y avisa con
+ * `onNewFromWhatsapp` cuando entran turnos reservados por el bot.
+ */
+export function useAppointments(
+  from: string,
+  to: string,
+  onNewFromWhatsapp?: (appointments: Appointment[]) => void,
+) {
   const { apiFetch } = useAuth();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -26,11 +36,19 @@ export function useAppointments(from: string, to: string) {
     [request, from, to],
   );
 
+  const knownIds = useRef<Set<string> | null>(null);
+  const notify = useRef(onNewFromWhatsapp);
+  useEffect(() => {
+    notify.current = onNewFromWhatsapp;
+  }, [onNewFromWhatsapp]);
+
   useEffect(() => {
     let cancelled = false;
+    knownIds.current = null;
     fetchRange()
       .then((data) => {
         if (cancelled) return;
+        knownIds.current = new Set(data.map((a) => a.id));
         setAppointments(data);
         setError(null);
       })
@@ -41,13 +59,34 @@ export function useAppointments(from: string, to: string) {
     };
   }, [fetchRange]);
 
+  // Actualización automática
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      fetchRange()
+        .then((data) => {
+          const known = knownIds.current;
+          if (known) {
+            const fresh = data.filter((a) => !known.has(a.id) && a.source === "WHATSAPP");
+            if (fresh.length) notify.current?.(fresh);
+          }
+          knownIds.current = new Set(data.map((a) => a.id));
+          setAppointments(data);
+        })
+        .catch(() => undefined);
+    }, POLL_MS);
+    return () => clearInterval(id);
+  }, [fetchRange]);
+
   const mutate = useCallback(
     async (path: string, method: string, body?: unknown) => {
       const result = await request<Appointment>(path, {
         method,
         body: body === undefined ? JSON.stringify({}) : JSON.stringify(body),
       });
-      setAppointments(await fetchRange());
+      const data = await fetchRange();
+      knownIds.current = new Set(data.map((a) => a.id));
+      setAppointments(data);
       return result;
     },
     [request, fetchRange],

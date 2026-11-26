@@ -65,6 +65,7 @@ pnpm dev              # API + web en paralelo
 | `pnpm db:up` / `pnpm db:down` | Levanta / baja PostgreSQL |
 | `pnpm db:migrate` | Crea y aplica una migración nueva (desarrollo) |
 | `pnpm db:deploy` | Aplica migraciones pendientes |
+| `pnpm db:update` | Aplica migraciones y regenera el cliente de Prisma (usar después de `git pull`) |
 | `pnpm db:seed` | Crea barbería, barbero y administrador (idempotente) |
 | `pnpm db:studio` | Abre Prisma Studio |
 | `pnpm build` / `pnpm lint` | Build y lint de ambas apps |
@@ -166,6 +167,31 @@ La pantalla **Vista del cliente** simula el flujo de WhatsApp (servicio → día
 - Estadísticas de cliente: una *visita* es un turno pasado que no fue cancelado ni marcado "no vino"
   (si nadie lo marcó, se asume que vino). Las notas del cliente se muestran en el detalle de cada turno.
 
+## Bot de WhatsApp
+
+Menú (lista interactiva): **Reservar turno · Mis turnos · Cambiar un turno · Cancelar un turno · Servicios y precios ·
+Ubicación y horarios**. También responde a "hola", "menú" y a los números 1 a 6.
+
+Reserva: nombre (solo clientes nuevos; ofrece usar el nombre de perfil de WhatsApp) → servicio → barbero (si hay más
+de uno) → día (próximos días con lugar, máx. 10) → horario (agrupado Mañana/Tarde/Noche, 9 por página + "Ver más") →
+confirmar. Se guarda con `source = WHATSAPP` y aparece en el calendario del panel.
+
+Estructura (`apps/api/src/modules/whatsapp/`):
+
+| Archivo | Responsabilidad |
+|---|---|
+| `bot/messages.ts` | Mensajes independientes del canal (texto, botones, lista) con los límites de WhatsApp |
+| `bot/cloud-api.mapper.ts` | Conversión a payloads de la Cloud API y parseo de webhooks |
+| `bot/bot.service.ts` | Idempotencia, estado de la conversación, ruteo por paso, expiración (30 min) |
+| `bot/booking.flow.ts` | Reservar y reprogramar |
+| `bot/manage.flow.ts` | Mis turnos y cancelar |
+| `simulator.controller.ts` | `POST /api/whatsapp/simulator/messages` · `DELETE /api/whatsapp/simulator/conversation` |
+
+- Mensajes duplicados: cada ID de mensaje se registra en `whatsapp_processed_messages`; si llega de nuevo se ignora.
+- Opciones de mensajes viejos o texto cuando se espera una opción: el bot avisa y repite el paso actual.
+- Si el horario se ocupa entre que el cliente lo elige y confirma, se le ofrecen los horarios actualizados.
+- El calendario del panel se actualiza solo cada 30 s y avisa cuando entra un turno por WhatsApp (📲).
+
 ## Notas
 
 - Las exclusion constraints no se pueden declarar en `schema.prisma`; viven en SQL dentro de las migraciones. Si en el futuro se regeneran migraciones, hay que conservarlas.
@@ -175,4 +201,4 @@ La pantalla **Vista del cliente** simula el flujo de WhatsApp (servicio → día
 
 1. ✅ Etapa 1 — Preparación: monorepo, Prisma, PostgreSQL, health check
 2. 🔄 Etapa 2 — MVP: ✅ auth admin · ✅ servicios · ✅ horarios · ✅ disponibilidad · ✅ turnos y calendario · ✅ clientes
-3. ⏳ Etapa 3 — WhatsApp Cloud API: webhooks, bot de reservas, confirmaciones y recordatorios
+3. 🔄 Etapa 3 — WhatsApp: ✅ bot y simulador · ⏳ webhook de Meta y número real · ⏳ recordatorios

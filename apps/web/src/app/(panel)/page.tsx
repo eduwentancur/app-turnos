@@ -11,13 +11,15 @@ export default function HomePage() {
       <p className="mt-1 text-stone-500">Este es el panel de {user?.barbershop.name}.</p>
 
       <div className="mt-8 rounded-2xl border border-dashed border-stone-300 bg-white p-6">
-        <h2 className="font-medium">Próximos pasos del MVP</h2>
+        <h2 className="font-medium">Estado del proyecto</h2>
         <ul className="mt-3 space-y-1.5 text-sm text-stone-600">
           <li>✅ Servicios y precios</li>
           <li>✅ Horarios de atención y bloqueos</li>
-          <li>✅ Disponibilidad (probala en Vista del cliente)</li>
+          <li>✅ Disponibilidad</li>
           <li>✅ Turnos y calendario</li>
-          <li>• Integración con WhatsApp</li>
+          <li>✅ Bot de WhatsApp (probalo en el Simulador)</li>
+          <li>• Conectar el número real de WhatsApp</li>
+          <li>• Recordatorios automáticos</li>
         </ul>
       </div>
     </div>
