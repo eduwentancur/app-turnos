@@ -1,5 +1,5 @@
 import { buttons, list, text } from './messages.js';
-import { fromCloudApiMessage, toCloudApiPayload } from './cloud-api.mapper.js';
+import { fromCloudApiMessage, toCloudApiPayload, toWhatsappRecipient } from './cloud-api.mapper.js';
 
 describe('mensajes de WhatsApp', () => {
   it('recorta títulos a los límites de WhatsApp', () => {
@@ -24,7 +24,7 @@ describe('mensajes de WhatsApp', () => {
     expect(payload).toEqual({
       messaging_product: 'whatsapp',
       recipient_type: 'individual',
-      to: '5493764000000',
+      to: '543764000000',
       type: 'interactive',
       interactive: {
         type: 'list',
@@ -47,5 +47,17 @@ describe('mensajes de WhatsApp', () => {
       fromCloudApiMessage({ id: 'w2', from: '549', type: 'interactive', interactive: { type: 'list_reply', list_reply: { id: 'SLOT:x', title: '09:00' } } }),
     ).toEqual({ type: 'reply', id: 'SLOT:x', title: '09:00' });
     expect(fromCloudApiMessage({ id: 'w3', from: '549', type: 'image' })).toBeNull();
+  });
+});
+
+describe('toWhatsappRecipient', () => {
+  it.each([
+    ['5493764685626', '543764685626'],
+    ['+5493764685626', '543764685626'],
+    ['543764685626', '543764685626'],
+    ['5215512345678', '525512345678'],
+    ['34612345678', '34612345678'],
+  ])('%s -> %s', (input, expected) => {
+    expect(toWhatsappRecipient(input)).toBe(expected);
   });
 });
