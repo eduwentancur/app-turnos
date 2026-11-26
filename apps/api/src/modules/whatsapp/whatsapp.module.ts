@@ -8,11 +8,15 @@ import { BookingFlow } from './bot/booking.flow.js';
 import { BotService } from './bot/bot.service.js';
 import { ManageFlow } from './bot/manage.flow.js';
 import { SimulatorController } from './simulator.controller.js';
+import { CloudApiClient } from './cloud-api.client.js';
+import { WebhookController } from './webhook.controller.js';
+import { WebhookService } from './webhook.service.js';
+import { WhatsappAccountResolver } from './whatsapp-account.resolver.js';
 
 @Module({
   imports: [AppointmentsModule, AvailabilityModule, CustomersModule, ScheduleModule, ServicesModule],
-  controllers: [SimulatorController],
-  providers: [BotService, BookingFlow, ManageFlow],
+  controllers: [SimulatorController, WebhookController],
+  providers: [BotService, BookingFlow, ManageFlow, CloudApiClient, WebhookService, WhatsappAccountResolver],
   exports: [BotService],
 })
 export class WhatsappModule {}

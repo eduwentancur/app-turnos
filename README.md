@@ -186,6 +186,11 @@ Estructura (`apps/api/src/modules/whatsapp/`):
 | `bot/booking.flow.ts` | Reservar y reprogramar |
 | `bot/manage.flow.ts` | Mis turnos y cancelar |
 | `simulator.controller.ts` | `POST /api/whatsapp/simulator/messages` · `DELETE /api/whatsapp/simulator/conversation` |
+| `webhook.controller.ts` | `GET/POST /api/whatsapp/webhook`: verificación de Meta y mensajes entrantes (firma `X-Hub-Signature-256`) |
+| `cloud-api.client.ts` | Envío de respuestas y marcado como leído vía Graph API |
+| `whatsapp-account.resolver.ts` | Qué barbería y token corresponden a cada `phone_number_id` (hoy por `.env`, luego por tabla) |
+
+Para conectar el número real seguí [docs/whatsapp-setup.md](docs/whatsapp-setup.md).
 
 - Mensajes duplicados: cada ID de mensaje se registra en `whatsapp_processed_messages`; si llega de nuevo se ignora.
 - Opciones de mensajes viejos o texto cuando se espera una opción: el bot avisa y repite el paso actual.
@@ -201,4 +206,4 @@ Estructura (`apps/api/src/modules/whatsapp/`):
 
 1. ✅ Etapa 1 — Preparación: monorepo, Prisma, PostgreSQL, health check
 2. 🔄 Etapa 2 — MVP: ✅ auth admin · ✅ servicios · ✅ horarios · ✅ disponibilidad · ✅ turnos y calendario · ✅ clientes
-3. 🔄 Etapa 3 — WhatsApp: ✅ bot y simulador · ⏳ webhook de Meta y número real · ⏳ recordatorios
+3. 🔄 Etapa 3 — WhatsApp: ✅ bot y simulador · ✅ webhook de Meta · ⏳ número de la barbería (Embedded Signup) · ⏳ recordatorios

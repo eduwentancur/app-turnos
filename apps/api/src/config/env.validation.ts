@@ -5,6 +5,10 @@ const booleanString = z
   .default('false')
   .transform((v) => v === 'true');
 
+/** Variables opcionales: una línea vacía en el .env ("CLAVE=") cuenta como no definida. */
+const optional = <T extends z.ZodType>(schema: T) =>
+  z.preprocess((v) => (v === '' ? undefined : v), schema.optional());
+
 const envSchema = z.object({
   NODE_ENV: z
     .enum(['development', 'test', 'production'])
@@ -29,6 +33,15 @@ const envSchema = z.object({
   JWT_ACCESS_TTL_SECONDS: z.coerce.number().int().positive().default(900),
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(7),
   COOKIE_SECURE: booleanString,
+
+  // WhatsApp Cloud API (opcionales: sin ellas funciona todo menos el número real)
+  WHATSAPP_VERIFY_TOKEN: optional(z.string().min(8, 'WHATSAPP_VERIFY_TOKEN: usá al menos 8 caracteres')),
+  WHATSAPP_APP_SECRET: optional(z.string().min(16)),
+  WHATSAPP_ACCESS_TOKEN: optional(z.string().min(20)),
+  WHATSAPP_PHONE_NUMBER_ID: optional(z.string().regex(/^\d+$/, 'WHATSAPP_PHONE_NUMBER_ID debe ser numérico')),
+  /** Barbería a la que pertenece el número (por slug) */
+  WHATSAPP_BARBERSHOP_SLUG: optional(z.string().min(1)),
+  WHATSAPP_GRAPH_VERSION: z.string().regex(/^v\d+\.\d+$/).default('v25.0'),
 });
 
 export type Env = z.infer<typeof envSchema>;

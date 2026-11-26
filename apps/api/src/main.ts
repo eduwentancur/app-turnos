@@ -7,7 +7,8 @@ import { configureApp } from './app.setup.js';
 import type { Env } from './config/env.validation.js';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // rawBody: necesario para verificar la firma de los webhooks de WhatsApp
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });
   configureApp(app);
   app.enableShutdownHooks();
 
