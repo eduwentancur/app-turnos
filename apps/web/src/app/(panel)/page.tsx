@@ -15,7 +15,8 @@ export default function HomePage() {
         <ul className="mt-3 space-y-1.5 text-sm text-stone-600">
           <li>✅ Servicios y precios</li>
           <li>✅ Horarios de atención y bloqueos</li>
-          <li>• Disponibilidad y reserva de turnos</li>
+          <li>✅ Disponibilidad (probala en Vista del cliente)</li>
+          <li>• Reserva de turnos</li>
           <li>• Calendario de turnos</li>
         </ul>
       </div>

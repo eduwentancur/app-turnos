@@ -45,6 +45,7 @@ export async function createTenant(app: NestExpressApplication): Promise<TestTen
     async cleanup() {
       const where = { barbershopId: shop.id };
       await prisma.appointment.deleteMany({ where });
+      await prisma.barberService.deleteMany({ where: { barber: { barbershopId: shop.id } } });
       await prisma.customer.deleteMany({ where });
       await prisma.service.deleteMany({ where });
       await prisma.workingHours.deleteMany({ where });

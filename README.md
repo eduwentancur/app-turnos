@@ -124,6 +124,25 @@ pnpm dev              # API + web en paralelo
 - Los bloqueos se reciben en fecha/hora local y se guardan en UTC según la zona horaria de la barbería.
   Al crear uno se informa cuántos turnos activos caen dentro (`conflictingAppointments`).
 
+## Disponibilidad
+
+| Endpoint | Descripción |
+|---|---|
+| `GET /api/availability?serviceId=&date=AAAA-MM-DD[&barberId=]` | Horarios libres del día agrupados en Mañana / Tarde / Noche |
+| `GET /api/availability/days?serviceId=[&from=&days=14&barberId=]` | Cantidad de horarios libres por día |
+| `GET /api/barbers` | Barberos de la barbería |
+
+Cómo se calcula (`slot-calculator.ts`, función pura con tests unitarios):
+
+1. Franjas del día: las propias del barbero si tiene, si no las generales de la barbería.
+2. Se generan inicios cada `slotStepMinutes` (30 por defecto) donde el servicio entra completo antes del cierre.
+3. Se descartan los que se superponen con turnos activos (`PENDING`/`CONFIRMED`) o bloqueos.
+4. Se descartan los que empiezan dentro de los próximos 30 min. Se puede reservar hasta 60 días adelante.
+5. Con varios barberos, un horario está libre si al menos uno lo está (`barberIds`).
+
+`AvailabilityService.findFreeBarbers()` valida un horario puntual y es lo que usará la reserva antes de confirmar.
+La pantalla **Vista del cliente** simula el flujo de WhatsApp (servicio → día → horario) con la paginación de 10 filas.
+
 ## Notas
 
 - Las exclusion constraints no se pueden declarar en `schema.prisma`; viven en SQL dentro de las migraciones. Si en el futuro se regeneran migraciones, hay que conservarlas.
@@ -132,5 +151,5 @@ pnpm dev              # API + web en paralelo
 ## Roadmap
 
 1. ✅ Etapa 1 — Preparación: monorepo, Prisma, PostgreSQL, health check
-2. 🔄 Etapa 2 — MVP: ✅ auth admin · ✅ servicios · ✅ horarios · ⏳ disponibilidad, turnos, calendario
+2. 🔄 Etapa 2 — MVP: ✅ auth admin · ✅ servicios · ✅ horarios · ✅ disponibilidad · ⏳ turnos, calendario
 3. ⏳ Etapa 3 — WhatsApp Cloud API: webhooks, bot de reservas, confirmaciones y recordatorios

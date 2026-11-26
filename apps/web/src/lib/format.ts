@@ -41,3 +41,18 @@ export const fromMinutes = (minutes: number) => {
   const clamped = Math.max(0, Math.min(minutes, 23 * 60 + 55));
   return `${String(Math.floor(clamped / 60)).padStart(2, "0")}:${String(clamped % 60).padStart(2, "0")}`;
 };
+
+const SHORT_DAYS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
+
+/** "2026-11-18" -> "Mié 18/11" (formato de las filas de WhatsApp) */
+export function formatShortDate(date: string): string {
+  const [y, m, d] = date.split("-").map(Number);
+  const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  return `${SHORT_DAYS[dow]} ${String(d).padStart(2, "0")}/${String(m).padStart(2, "0")}`;
+}
+
+/** "2026-11-18" -> "18/11/2026" */
+export function formatLongDate(date: string): string {
+  const [y, m, d] = date.split("-");
+  return `${d}/${m}/${y}`;
+}

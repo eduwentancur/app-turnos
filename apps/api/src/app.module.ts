@@ -8,6 +8,8 @@ import { HealthModule } from './modules/health/health.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { ServicesModule } from './modules/services/services.module.js';
 import { ScheduleModule } from './modules/schedule/schedule.module.js';
+import { AvailabilityModule } from './modules/availability/availability.module.js';
+import { BarbersModule } from './modules/barbers/barbers.module.js';
 
 @Module({
   imports: [
@@ -19,6 +21,8 @@ import { ScheduleModule } from './modules/schedule/schedule.module.js';
     AuthModule,
     ServicesModule,
     ScheduleModule,
+    AvailabilityModule,
+    BarbersModule,
   ],
   providers: [
     // useExisting permite reemplazar el guard en tests (overrideProvider)
