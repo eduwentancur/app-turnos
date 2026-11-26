@@ -39,6 +39,23 @@ Step 'Archivos de entorno'
 if (-not (Test-Path 'apps/api/.env'))      { Copy-Item 'apps/api/.env.example' 'apps/api/.env';      Ok 'apps/api/.env creado' }      else { Ok 'apps/api/.env ya existe' }
 if (-not (Test-Path 'apps/web/.env.local')) { Copy-Item 'apps/web/.env.example' 'apps/web/.env.local'; Ok 'apps/web/.env.local creado' } else { Ok 'apps/web/.env.local ya existe' }
 
+# Secreto JWT: se genera uno propio si falta o tiene el valor de ejemplo
+$apiEnv = 'apps/api/.env'
+$envText = Get-Content $apiEnv -Raw
+if ($envText -notmatch '(?m)^JWT_ACCESS_SECRET=(?!CAMBIAR).{32,}') {
+  $secret = node -e "process.stdout.write(require('crypto').randomBytes(48).toString('base64'))"
+  $lines = @(Get-Content $apiEnv | Where-Object { $_ -notmatch '^JWT_ACCESS_SECRET=' })
+  $lines += "JWT_ACCESS_SECRET=$secret"
+  foreach ($kv in @('JWT_ACCESS_TTL_SECONDS=900', 'REFRESH_TOKEN_TTL_DAYS=7', 'COOKIE_SECURE=false')) {
+    $key = $kv.Split('=')[0]
+    if (-not ($lines | Where-Object { $_ -match "^$key=" })) { $lines += $kv }
+  }
+  Set-Content -Path $apiEnv -Value $lines -Encoding ascii
+  Ok 'Secreto JWT generado en apps/api/.env'
+} else {
+  Ok 'Secreto JWT presente'
+}
+
 # 3. Dependencias -------------------------------------------------------------
 Step 'Instalando dependencias (pnpm install)'
 pnpm install
@@ -76,6 +93,18 @@ switch ($LASTEXITCODE) {
 $constraint = docker exec turnos-postgres psql -U turnos -d turnos -tAc "SELECT conname FROM pg_constraint WHERE conname = 'appointments_no_overlap'"
 if ($constraint -match 'appointments_no_overlap') { Ok 'Constraint anti-solapamiento activa' } else { Warn 'No se encontro appointments_no_overlap' }
 
+# 5b. Datos iniciales ----------------------------------------------------------
+Step 'Datos iniciales (barberia, barbero y administrador)'
+$users = docker exec turnos-postgres psql -U turnos -d turnos -tAc "SELECT count(*) FROM users"
+if ([int]$users -eq 0 -and -not $env:SEED_ADMIN_EMAIL) {
+  $env:SEED_ADMIN_EMAIL = Read-Host '    Email del administrador'
+  $name = Read-Host '    Nombre del administrador (Enter = Administrador)'
+  if ($name) { $env:SEED_ADMIN_NAME = $name }
+}
+pnpm --filter api db:seed
+if ($LASTEXITCODE -ne 0) { Fail 'El seed fallo' }
+Write-Host '    Si se mostro una contrasena inicial, guardala: no se vuelve a mostrar.' -ForegroundColor Yellow
+
 # 6. Tests y build ------------------------------------------------------------
 Step 'Tests de la API'
 pnpm --filter api test
@@ -90,7 +119,7 @@ if ($hasGit) {
   if (-not (Test-Path '.git')) {
     git init -b main | Out-Null
     git add -A
-    git commit -q -m "chore: etapa 1 - monorepo, prisma 7, postgres y health check"
+    git commit -q -m "chore: setup inicial"
     if ($LASTEXITCODE -eq 0) { Ok 'Repo inicializado con commit inicial en main' }
     else { Warn 'No se pudo commitear. Configura: git config --global user.name "Tu Nombre" y user.email, despues: git commit -m "chore: etapa 1"' }
   } else {

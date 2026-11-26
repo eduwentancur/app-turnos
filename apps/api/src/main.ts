@@ -1,25 +1,17 @@
-import { Logger, StandardSchemaValidationPipe } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module.js';
-import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
+import { configureApp } from './app.setup.js';
 import type { Env } from './config/env.validation.js';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule);
-  const config = app.get<ConfigService<Env, true>>(ConfigService);
-
-  app.setGlobalPrefix('api');
-  app.enableCors({
-    origin: config.get('WEB_ORIGIN', { infer: true }),
-    credentials: true,
-  });
-  // Validación con schemas Zod declarados en cada endpoint: @Body({ schema })
-  app.useGlobalPipes(new StandardSchemaValidationPipe({ transform: true }));
-  app.useGlobalFilters(new AllExceptionsFilter());
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  configureApp(app);
   app.enableShutdownHooks();
 
-  const port = config.get('PORT', { infer: true });
+  const port = app.get<ConfigService<Env, true>>(ConfigService).get('PORT', { infer: true });
   await app.listen(port);
   Logger.log(`API escuchando en http://localhost:${port}/api`, 'Bootstrap');
 }

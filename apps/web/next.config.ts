@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
+const API_URL = process.env.API_URL ?? "http://localhost:3001";
+
 const nextConfig: NextConfig = {
-  /* config options here */
   cacheComponents: true,
   partialPrefetching: true,
   turbopack: {
@@ -11,6 +12,11 @@ const nextConfig: NextConfig = {
         as: "*.css",
       },
     },
+  },
+  // El navegador habla siempre con el mismo origen (/api/*) y Next lo reenvía a la API:
+  // sin CORS y con la cookie de sesión en el mismo dominio.
+  async rewrites() {
+    return [{ source: "/api/:path*", destination: `${API_URL}/api/:path*` }];
   },
 };
 

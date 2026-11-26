@@ -49,6 +49,8 @@ cp apps/web/.env.example apps/web/.env.local
 pnpm install          # también genera el cliente de Prisma
 pnpm db:up            # levanta PostgreSQL
 pnpm db:deploy        # aplica migraciones
+# generá JWT_ACCESS_SECRET en apps/api/.env (ver comentario en .env.example)
+SEED_ADMIN_EMAIL=tu@email.com pnpm db:seed   # muestra la contraseña inicial una vez
 pnpm dev              # API + web en paralelo
 ```
 
@@ -63,6 +65,7 @@ pnpm dev              # API + web en paralelo
 | `pnpm db:up` / `pnpm db:down` | Levanta / baja PostgreSQL |
 | `pnpm db:migrate` | Crea y aplica una migración nueva (desarrollo) |
 | `pnpm db:deploy` | Aplica migraciones pendientes |
+| `pnpm db:seed` | Crea barbería, barbero y administrador (idempotente) |
 | `pnpm db:studio` | Abre Prisma Studio |
 | `pnpm build` / `pnpm lint` | Build y lint de ambas apps |
 | `pnpm --filter api test` / `test:e2e` | Tests de la API |
@@ -76,6 +79,23 @@ pnpm dev              # API + web en paralelo
 - **Disponibilidad agrupada por franjas** (Mañana / Tarde / Noche, cortes configurables por barbería) para alimentar tanto el panel como las listas interactivas de WhatsApp (máx. 10 filas por mensaje).
 - **Pago fuera del sistema**: se cobra en el local; el turno guarda `priceAtBooking` para estadísticas.
 
+## Autenticación
+
+- **Access token** JWT (HS256, 15 min) en memoria del navegador; se envía como `Authorization: Bearer`.
+- **Refresh token** opaco y rotativo (7 días) en cookie `HttpOnly` + `SameSite=Strict`, path `/api/auth`. En la base solo se guarda su SHA-256.
+- Reusar un refresh token ya rotado (fuera de una ventana de 10 s para carreras entre pestañas) revoca **todas** las sesiones del usuario.
+- Contraseñas con **Argon2id**. Login limitado a 5 intentos/minuto por IP.
+- Todo endpoint es privado por defecto; los públicos se marcan con `@Public()`.
+- El panel llama a `/api/*` en su propio origen y Next.js lo reenvía a la API (sin CORS).
+
+| Endpoint | Descripción |
+|---|---|
+| `POST /api/auth/login` | Email + contraseña → access token + cookie de refresh |
+| `POST /api/auth/refresh` | Renueva la sesión (rota la cookie) |
+| `POST /api/auth/logout` | Revoca la sesión actual |
+| `GET /api/auth/me` | Usuario autenticado |
+| `PATCH /api/auth/password` | Cambia la contraseña y cierra las demás sesiones |
+
 ## Notas
 
 - Las exclusion constraints no se pueden declarar en `schema.prisma`; viven en SQL dentro de las migraciones. Si en el futuro se regeneran migraciones, hay que conservarlas.
@@ -84,5 +104,5 @@ pnpm dev              # API + web en paralelo
 ## Roadmap
 
 1. ✅ Etapa 1 — Preparación: monorepo, Prisma, PostgreSQL, health check
-2. ⏳ Etapa 2 — MVP: auth admin, servicios, horarios, disponibilidad, turnos, calendario
+2. 🔄 Etapa 2 — MVP: ✅ auth admin · ⏳ servicios, horarios, disponibilidad, turnos, calendario
 3. ⏳ Etapa 3 — WhatsApp Cloud API: webhooks, bot de reservas, confirmaciones y recordatorios

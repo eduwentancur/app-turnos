@@ -1,29 +1,19 @@
-import { Test, type TestingModule } from '@nestjs/testing';
-import type { INestApplication } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import request from 'supertest';
-import type { App } from 'supertest/types.js';
-import { AppModule } from '../src/app.module.js';
-import { AllExceptionsFilter } from '../src/common/filters/all-exceptions.filter.js';
+import { createTestApp } from './utils/create-test-app.js';
 
 describe('Health (e2e)', () => {
-  let app: INestApplication<App>;
+  let app: NestExpressApplication;
 
   beforeAll(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-
-    app = moduleFixture.createNestApplication();
-    app.setGlobalPrefix('api');
-    app.useGlobalFilters(new AllExceptionsFilter());
-    await app.init();
+    app = await createTestApp();
   });
 
   afterAll(async () => {
     await app.close();
   });
 
-  it('GET /api/health responde 200 con la base arriba', async () => {
+  it('GET /api/health es público y responde 200 con la base arriba', async () => {
     const res = await request(app.getHttpServer()).get('/api/health').expect(200);
     expect(res.body).toMatchObject({ status: 'ok', database: 'up' });
   });
