@@ -93,6 +93,11 @@ describe('WhatsApp bot (e2e, vía simulador)', () => {
     expect(services[0]).toMatchObject({ title: 'Corte de cabello', description: '$ 8.000 · 30 min' });
 
     r = await tap(services[0].id);
+    expect(last(r.replies)).toMatchObject({
+      type: 'buttons',
+      buttons: [{ id: 'PARTY:1', title: 'Solo yo' }, { id: 'PARTY:2' }, { id: 'PARTY:3' }],
+    });
+    r = await tap('PARTY:1');
     const days = rowsOf(last(r.replies));
     expect(days.length).toBeLessThanOrEqual(10);
     const day = days.find((d) => d.id === `DAY:${target}`)!;
@@ -152,6 +157,7 @@ describe('WhatsApp bot (e2e, vía simulador)', () => {
   it('si el horario se ocupa antes de confirmar, ofrece los disponibles', async () => {
     let r = await tap('MENU:BOOK');
     r = await tap(rowsOf(last(r.replies))[0].id);
+    r = await tap('PARTY:1');
     r = await tap(`DAY:${target}`);
     const first = rowsOf(last(r.replies))[0]; // 09:00
     r = await tap(first.id);
@@ -255,6 +261,101 @@ describe('WhatsApp bot (e2e, vía simulador)', () => {
       expect(bodyOf(last(r.replies))).toContain('Servicios y precios');
       r = await as({ type: 'text', text: 'quiero cancelar mi turno' });
       expect(last(r.replies)).toMatchObject({ type: 'buttons', buttons: [{ id: 'CANCEL_YES' }, { id: 'CANCEL_NO' }] });
+    });
+  });
+
+  describe('turnos para varias personas', () => {
+    const DAD = '5493764555222';
+    const asDad = (message: object) =>
+      request(app.getHttpServer())
+        .post('/api/whatsapp/simulator/messages')
+        .set('Authorization', `Bearer ${owner}`)
+        .send({ phone: DAD, profileName: 'Carlos Ruiz', message })
+        .expect(200)
+        .then((res) => res.body as { replies: Reply[] });
+    const group = addDaysToDate(target, 1);
+
+    it('padre e hijo: dos turnos seguidos con un solo Confirmar', async () => {
+      let r = await asDad({ type: 'reply', id: 'MENU:BOOK' });
+      r = await asDad({ type: 'reply', id: 'NAME:PROFILE' });
+      const svc = rowsOf(last(r.replies))[0].id;
+      r = await asDad({ type: 'reply', id: svc });
+      r = await asDad({ type: 'reply', id: 'PARTY:2' });
+      expect(bodyOf(last(r.replies))).toContain('persona 2');
+      r = await asDad({ type: 'text', text: 'Tomás' });
+      expect(bodyOf(last(r.replies))).toContain('¿Qué servicio para Tomás?');
+      r = await asDad({ type: 'reply', id: rowsOf(last(r.replies))[0].id });
+      expect(bodyOf(last(r.replies))).toContain('2 personas seguidas');
+      r = await asDad({ type: 'reply', id: `DAY:${group}` });
+      // El último horario de cada franja no sirve: no entran los dos (11:30 y 19:30)
+      const times = rowsOf(last(r.replies)).map((x) => x.title);
+      expect(times).not.toContain('11:30');
+      r = await asDad({ type: 'reply', id: rowsOf(last(r.replies)).find((x) => x.title === '10:00')!.id });
+      const confirm = bodyOf(last(r.replies));
+      expect(confirm).toContain('• 10:00 Carlos Ruiz — Corte de cabello');
+      expect(confirm).toContain('• 10:30 Tomás — Corte de cabello');
+      expect(confirm).toContain('Total: $ 16.000');
+
+      r = await asDad({ type: 'reply', id: 'CONFIRM' });
+      expect(bodyOf(last(r.replies))).toContain('Los turnos quedaron confirmados');
+      const rows = await prisma.appointment.findMany({
+        where: { barbershopId: tenant.barbershopId, groupId: { not: null }, status: 'CONFIRMED' },
+        orderBy: { startsAt: 'asc' },
+      });
+      expect(rows).toHaveLength(2);
+      expect(rows[0].groupId).toBe(rows[1].groupId);
+      expect(rows.map((x) => x.guestName)).toEqual([null, 'Tomás']);
+      expect(rows[1].startsAt.getTime()).toBe(rows[0].endsAt.getTime());
+    });
+
+    it('cancelar: pregunta si todos o uno, y cancela todos', async () => {
+      let r = await asDad({ type: 'reply', id: 'MENU:CANCEL' });
+      expect(last(r.replies)).toMatchObject({ buttons: [{ id: 'SCOPE:ALL' }, { id: 'SCOPE:ONE', title: 'Solo el mío' }, { id: 'CANCEL_NO' }] });
+      r = await asDad({ type: 'reply', id: 'SCOPE:ALL' });
+      expect(bodyOf(last(r.replies))).toContain('Tomás');
+      r = await asDad({ type: 'reply', id: 'CANCEL_YES' });
+      expect(bodyOf(last(r.replies))).toContain('se cancelaron 2 turnos');
+    });
+
+    it('por texto: "un corte para mí y otro para mi hijo" + día y hora', async () => {
+      const [y, m, d] = group.split('-').map(Number);
+      const weekday = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'][new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
+      let r = await asDad({ type: 'text', text: `un corte de cabello para mí y otro para mi hijo el ${weekday} a las 17` });
+      expect(bodyOf(last(r.replies))).toContain('persona 2');
+      r = await asDad({ type: 'text', text: 'Tomás' });
+      r = await asDad({ type: 'reply', id: rowsOf(last(r.replies))[0].id });
+      const confirm = bodyOf(last(r.replies));
+      expect(confirm).toContain('• 17:00 Carlos Ruiz');
+      expect(confirm).toContain('• 17:30 Tomás');
+    });
+
+    it('todo o nada: si el segundo horario está ocupado no se reserva ninguno', async () => {
+      const { AppointmentsService } = await import('../src/modules/appointments/appointments.service.js');
+      const appointments = app.get(AppointmentsService);
+      const service = await prisma.service.findFirstOrThrow({ where: { barbershopId: tenant.barbershopId } });
+      const { localToUtc } = await import('../src/common/time.js');
+      // Ocupado 16:30 → un grupo a las 16:00 no entra
+      await appointments.create(
+        tenant.barbershopId,
+        { serviceId: service.id, startsAt: localToUtc(group, '16:30', TZ), customer: { name: 'Otro', phone: '3764 111000' } },
+        { canOverrideSchedule: false, source: 'ADMIN' },
+      );
+      const before = await prisma.appointment.count({ where: { barbershopId: tenant.barbershopId } });
+      await expect(
+        appointments.createGroup(
+          tenant.barbershopId,
+          {
+            startsAt: localToUtc(group, '16:00', TZ),
+            customer: { name: 'Carlos', phone: DAD },
+            people: [
+              { serviceId: service.id, guestName: null },
+              { serviceId: service.id, guestName: 'Tomás' },
+            ],
+          },
+          { source: 'WHATSAPP' },
+        ),
+      ).rejects.toThrow('No hay lugar para todos');
+      expect(await prisma.appointment.count({ where: { barbershopId: tenant.barbershopId } })).toBe(before);
     });
   });
 

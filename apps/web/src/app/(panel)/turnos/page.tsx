@@ -191,6 +191,11 @@ function Calendar({ week, services }: { week: Week; services: Service[] }) {
         {selected && (
           <AppointmentDetail
             appointment={selected}
+            group={
+              selected.groupId
+                ? appointments.filter((a) => a.groupId === selected.groupId && a.id !== selected.id && a.status !== "CANCELLED")
+                : []
+            }
             today={today}
             onClose={() => setSelected(null)}
             onReschedule={async (startsAt) => {

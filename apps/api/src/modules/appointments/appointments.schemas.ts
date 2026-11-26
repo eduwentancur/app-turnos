@@ -19,6 +19,8 @@ export const createAppointmentSchema = z
     customerId: z.uuid('customerId inválido').optional(),
     customer: customer.optional(),
     notes: z.string().trim().max(300).optional(),
+    /** Si el turno es para otra persona (ej. el hijo de quien reserva) */
+    guestName: z.string().trim().min(2).max(60).optional(),
     /** Solo OWNER: permite reservar fuera del horario de atención (igual se evitan choques). */
     allowOutsideSchedule: z.boolean().optional(),
   })

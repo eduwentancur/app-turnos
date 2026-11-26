@@ -134,6 +134,9 @@ export class BotService {
       CONFIRM: [IDS.confirm, IDS.changeSlot, IDS.abort],
       PICK_APPOINTMENT: ['APPT'],
       CONFIRM_CANCEL: [IDS.cancelYes, IDS.cancelNo],
+      ASK_PARTY: ['PARTY'],
+      ASK_GUEST_SERVICE: ['SVC'],
+      CONFIRM_SCOPE: [IDS.scopeAll, IDS.scopeOne, IDS.cancelNo],
     };
     // Los IDs fijos (ej. NAME:PROFILE) se comparan completos; los dinámicos (SVC:<id>) por prefijo
     const key = expected[turn.state]?.includes(message.id) ? message.id : prefix;
@@ -147,7 +150,13 @@ export class BotService {
       case IDS.useProfileName:
         return this.booking.onName(turn, { useProfile: true });
       case 'SVC':
-        return this.booking.onService(turn, value);
+        return turn.state === 'ASK_GUEST_SERVICE' ? this.booking.onGuestService(turn, value) : this.booking.onService(turn, value);
+      case 'PARTY':
+        return this.booking.onParty(turn, Number(value));
+      case IDS.scopeAll:
+        return this.manage.onScope(turn, 'all');
+      case IDS.scopeOne:
+        return this.manage.onScope(turn, 'one');
       case 'BRB':
         return this.booking.onBarber(turn, value === 'ANY' ? null : value);
       case 'DAY':
@@ -176,14 +185,26 @@ export class BotService {
     if (GREETINGS.has(t)) return this.menu(turn);
     if (turn.state === 'IDLE' && MENU_BY_NUMBER[t]) return this.menuOption(turn, MENU_BY_NUMBER[t]);
     if (turn.state === 'ASK_NAME') return this.booking.onName(turn, { text: raw });
+    if (turn.state === 'ASK_GUEST_NAME') return this.booking.onGuestName(turn, raw);
+    if (turn.state === 'ASK_PARTY') {
+      if (/^(1|uno|solo yo|solo para mi|solo mio|para mi|yo)$/.test(t)) return this.booking.onParty(turn, 1);
+      const n = (await this.understand(turn.barbershopId, raw)).partySize ?? (/^[23]$/.test(t) ? Number(t) : undefined);
+      if (n) return this.booking.onParty(turn, n);
+    }
 
     const wish = await this.understand(turn.barbershopId, raw);
     const hasDetails = Boolean(wish.serviceId || wish.date || wish.time || wish.period);
-    const inBooking = ['PICK_SERVICE', 'PICK_BARBER', 'PICK_DAY', 'PICK_SLOT', 'CONFIRM'].includes(turn.state);
+    const inBooking = ['PICK_SERVICE', 'PICK_BARBER', 'PICK_DAY', 'PICK_SLOT', 'CONFIRM', 'ASK_PARTY', 'ASK_GUEST_SERVICE'].includes(
+      turn.state,
+    );
 
     // En medio de una reserva: "mejor el viernes", "a las 6", "corte y barba"
     if (inBooking && hasDetails && (!wish.intent || wish.intent === 'book' || wish.intent === 'reschedule')) {
       const ctx = { ...turn.ctx };
+      if (wish.partySize && ctx.mode === 'book' && !ctx.guests?.length) {
+        ctx.partySize = wish.partySize;
+        ctx.guests = [];
+      }
       if (wish.serviceId && ctx.mode !== 'reschedule' && wish.serviceId !== ctx.serviceId) {
         ctx.serviceId = wish.serviceId;
         ctx.barberId = undefined;
@@ -318,7 +339,7 @@ export class BotService {
   }
 
   private repeat(turn: Turn): Promise<FlowResult> {
-    return turn.state === 'PICK_APPOINTMENT' || turn.state === 'CONFIRM_CANCEL'
+    return turn.state === 'PICK_APPOINTMENT' || turn.state === 'CONFIRM_CANCEL' || turn.state === 'CONFIRM_SCOPE'
       ? this.manage.repeat(turn)
       : this.booking.repeat(turn);
   }

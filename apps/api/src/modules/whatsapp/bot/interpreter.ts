@@ -20,6 +20,8 @@ export interface Interpretation {
   time?: string;
   /** Franja si dijo "a la tarde" sin hora */
   period?: DayPeriod;
+  /** Cantidad de personas si dijo "para mí y mi hijo", "somos 3", "dos cortes" */
+  partySize?: number;
 }
 
 export interface InterpreterContext {
@@ -229,6 +231,23 @@ function detectTime(t: string, period?: DayPeriod): string | undefined {
   return `${pad(hour)}:${pad(minute)}`;
 }
 
+const COMPANIONS = 'hijo|hija|hijos|papa|viejo|vieja|mama|hermano|hermana|amigo|amiga|novio|novia|pareja|esposo|esposa|marido|mujer|sobrino|sobrina|primo|prima|nene|nena|abuelo|tio|cunado|companero';
+
+function detectPartySize(t: string): number | undefined {
+  const explicit = t.match(/\b(?:somos|para|seriamos|vamos) (\d)\b(?! ?(?:hs|horas|h\b|:|y media|y cuarto))|\b(\d) (?:cortes|turnos|personas|barbas)\b/);
+  if (explicit) {
+    const n = Number(explicit[1] ?? explicit[2]);
+    if (n >= 1 && n <= 5) return n;
+  }
+  const mentions = t.match(new RegExp(`\\bmis? (?:${COMPANIONS})\\b`, 'g'))?.length ?? 0;
+  // "para mí y mi hijo", "mi hijo y yo", "a mí y a mi papá"
+  // "para mí" cuenta solo si no sigue un acompañante ("para mi hijo" = una sola persona)
+  const self = new RegExp(`\\b(?:para|a) mi\\b(?! (?:${COMPANIONS})\\b)|\\byo\\b|\\bme (?:lo )?corto\\b|\\by otro para\\b`);
+  if (mentions > 0 && self.test(t)) return 1 + mentions;
+  if (/\bmis hijos\b/.test(t)) return 3;
+  return undefined;
+}
+
 export function interpret(text: string, ctx: InterpreterContext): Interpretation {
   const t = wordsToDigits(normalize(text));
   const result: Interpretation = {};
@@ -239,14 +258,16 @@ export function interpret(text: string, ctx: InterpreterContext): Interpretation
   const period = detectPeriod(t);
   const time = detectTime(t, period);
 
+  const partySize = detectPartySize(t);
   if (serviceId) result.serviceId = serviceId;
+  if (partySize && partySize > 1) result.partySize = partySize;
   if (date) result.date = date;
   if (time) result.time = time;
   if (period && !time) result.period = period;
 
   // Si menciona servicio, día u hora sin otra intención, es un pedido de turno
   if (intent && intent !== 'greeting') result.intent = intent;
-  else if (serviceId || date || time) result.intent = 'book';
+  else if (serviceId || date || time || result.partySize) result.intent = 'book';
   else if (intent) result.intent = intent;
   return result;
 }

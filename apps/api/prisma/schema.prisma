@@ -206,6 +206,10 @@ model Appointment {
   source         AppointmentSource @default(ADMIN)
   /// Precio congelado al reservar (el pago se maneja en el local)
   priceAtBooking Decimal           @db.Decimal(10, 2)
+  /// Persona que se atiende cuando no es quien reservó (ej. el hijo del cliente)
+  guestName      String?
+  /// Turnos reservados juntos (ej. padre e hijo seguidos) comparten este id
+  groupId        String?           @db.Uuid
   notes          String?
   cancelledAt    DateTime?         @db.Timestamptz(3)
   createdAt      DateTime          @default(now()) @db.Timestamptz(3)
@@ -219,6 +223,7 @@ model Appointment {
   @@index([barbershopId, startsAt])
   @@index([barberId, startsAt])
   @@index([customerId])
+  @@index([groupId])
   @@map("appointments")
 }
 

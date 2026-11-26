@@ -38,6 +38,7 @@ export function AppointmentForm({
   const [customerId, setCustomerId] = useState<string | null>(initialCustomer?.id ?? null);
   const [suggestions, setSuggestions] = useState<Customer[]>([]);
   const [notes, setNotes] = useState("");
+  const [guestName, setGuestName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -76,6 +77,7 @@ export function AppointmentForm({
         startsAt,
         ...(customerId ? { customerId } : { customer: { name: name.trim(), phone: phone.trim() } }),
         ...(notes.trim() ? { notes: notes.trim() } : {}),
+        ...(guestName.trim().length >= 2 ? { guestName: guestName.trim() } : {}),
         ...(outside ? { allowOutsideSchedule: true } : {}),
       });
     } catch (err) {
@@ -195,6 +197,15 @@ export function AppointmentForm({
           </ul>
         )}
       </div>
+
+      <Field
+        label="Para otra persona"
+        hint="Opcional · ej. el hijo del cliente"
+        placeholder="Nombre de quien se atiende"
+        maxLength={60}
+        value={guestName}
+        onChange={(e) => setGuestName(e.target.value)}
+      />
 
       <TextArea label="Notas" hint="Opcional" rows={2} maxLength={300} value={notes} onChange={(e) => setNotes(e.target.value)} />
 

@@ -14,6 +14,8 @@ export interface Appointment {
   customer: { id: string; name: string; phone: string; notes: string | null };
   price: number;
   notes: string | null;
+  guestName: string | null;
+  groupId: string | null;
   cancelledAt: string | null;
   createdAt: string;
 }
@@ -31,7 +33,13 @@ export interface CreateAppointmentInput {
   customerId?: string;
   customer?: { name: string; phone: string };
   notes?: string;
+  guestName?: string;
   allowOutsideSchedule?: boolean;
+}
+
+/** Nombre a mostrar: la persona que se atiende (si es otra) y quién reservó. */
+export function attendeeLabel(a: { guestName: string | null; customer: { name: string } }): string {
+  return a.guestName ? `${a.guestName} (de ${a.customer.name.split(" ")[0]})` : a.customer.name;
 }
 
 export const STATUS_LABEL: Record<AppointmentStatus, string> = {

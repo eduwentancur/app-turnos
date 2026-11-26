@@ -30,6 +30,7 @@ export class BookingFlow {
     const ctx: BotContext = {
       mode: 'book',
       ...(wish.serviceId ? { serviceId: wish.serviceId } : {}),
+      ...(wish.partySize ? { partySize: wish.partySize, guests: [] } : {}),
       ...(wish.date || wish.time || wish.period ? { pref: { date: wish.date, time: wish.time, period: wish.period } } : {}),
     };
     if (turn.customer) return this.advance(turn, { ...ctx, customerName: turn.customer.name });
@@ -56,8 +57,77 @@ export class BookingFlow {
    */
   async advance(turn: Turn, ctx: BotContext): Promise<FlowResult> {
     if (!ctx.serviceId) return this.askService(turn, ctx);
-    if (ctx.barberId === undefined) return this.onService(turn, ctx.serviceId, ctx);
+    if (ctx.mode === 'book') {
+      // Si ya pidió día/hora en texto o audio sin mencionar a nadie más, se asume que es para él
+      if (ctx.partySize === undefined && ctx.pref?.date) ctx = { ...ctx, partySize: 1, guests: [] };
+      if (ctx.partySize === undefined) return this.askParty(ctx);
+      const guests = ctx.guests ?? [];
+      const missing = guests.findIndex((g) => !g.serviceId);
+      if (missing !== -1) return this.askGuestService(turn, ctx, missing);
+      if (guests.length < ctx.partySize - 1) return this.askGuestName(ctx);
+    }
+    if (ctx.barberId === undefined) return this.onService(turn, ctx.serviceId!, ctx);
     return this.afterBarber(turn, ctx);
+  }
+
+  // ---------- Varias personas ----------
+
+  askParty(ctx: BotContext): FlowResult {
+    return {
+      state: 'ASK_PARTY',
+      ctx,
+      replies: [
+        buttons('¿El turno es solo para vos o para más personas? (ej. vos y tu hijo, uno después del otro)', [
+          { id: prefixed('PARTY', 1), title: 'Solo yo' },
+          { id: prefixed('PARTY', 2), title: '2 personas' },
+          { id: prefixed('PARTY', 3), title: '3 personas' },
+        ]),
+      ],
+    };
+  }
+
+  async onParty(turn: Turn, size: number): Promise<FlowResult> {
+    const partySize = Math.min(Math.max(Math.trunc(size) || 1, 1), 3);
+    return this.advance(turn, { ...turn.ctx, partySize, guests: [] });
+  }
+
+  askGuestName(ctx: BotContext): FlowResult {
+    const n = (ctx.guests?.length ?? 0) + 2;
+    return { state: 'ASK_GUEST_NAME', ctx, replies: [text(`¿Cómo se llama la persona ${n}? (ej. Tomás)`)] };
+  }
+
+  async onGuestName(turn: Turn, raw: string): Promise<FlowResult> {
+    const name = raw.trim().replace(/\s+/g, ' ');
+    if (name.length < 2 || name.length > MAX_NAME || !/\p{L}/u.test(name)) {
+      return { state: 'ASK_GUEST_NAME', ctx: turn.ctx, replies: [text('No entendí el nombre 🤔 Escribilo de nuevo, por ejemplo: Tomás')] };
+    }
+    const guests = [...(turn.ctx.guests ?? []), { name }];
+    return this.askGuestService(turn, { ...turn.ctx, guests }, guests.length - 1);
+  }
+
+  async askGuestService(turn: Turn, ctx: BotContext, index: number): Promise<FlowResult> {
+    const active = await this.services.list(turn.barbershopId, { includeInactive: false });
+    const rows: ListRow[] = active.slice(0, LIMITS.rowsPerList).map((s) => ({
+      id: prefixed('SVC', s.id),
+      title: s.name,
+      description: `${price(s.price)} · ${duration(s.durationMinutes)}`,
+    }));
+    const name = ctx.guests?.[index]?.name ?? 'la otra persona';
+    return { state: 'ASK_GUEST_SERVICE', ctx, replies: [list(`¿Qué servicio para ${name}?`, 'Ver servicios', [{ rows }])] };
+  }
+
+  async onGuestService(turn: Turn, serviceId: string): Promise<FlowResult> {
+    const active = await this.services.list(turn.barbershopId, { includeInactive: false });
+    const guests = [...(turn.ctx.guests ?? [])];
+    const index = guests.findIndex((g) => !g.serviceId);
+    if (index === -1 || !active.some((s) => s.id === serviceId)) return this.advance(turn, turn.ctx);
+    guests[index] = { ...guests[index], serviceId };
+    return this.advance(turn, { ...turn.ctx, guests, barberId: undefined });
+  }
+
+  /** Servicios que van después del primero (acompañantes), para calcular horarios donde entran todos. */
+  private extraServices(ctx: BotContext): string[] {
+    return (ctx.guests ?? []).map((g) => g.serviceId).filter((id): id is string => Boolean(id));
   }
 
   /** Con servicio y barbero definidos: aplica el día / hora pedidos o pregunta. */
@@ -111,7 +181,8 @@ export class BookingFlow {
       return this.withNotice('Ese servicio ya no está disponible.', await this.askService(turn, { ...base, serviceId: undefined }));
     }
     const ctx: BotContext = { ...base, serviceId, barberId: null };
-    const barbers = await this.barbersFor(turn.barbershopId, serviceId);
+    if (ctx.mode === 'book' && ctx.partySize === undefined) return this.askParty({ ...ctx, barberId: undefined });
+    const barbers = await this.barbersFor(turn.barbershopId, [serviceId, ...this.extraServices(ctx)]);
     if (barbers.length <= 1) return this.afterBarber(turn, ctx);
 
     const rows: ListRow[] = [
@@ -127,7 +198,9 @@ export class BookingFlow {
 
   async onBarber(turn: Turn, barberId: string | null): Promise<FlowResult> {
     if (barberId) {
-      const ok = (await this.barbersFor(turn.barbershopId, turn.ctx.serviceId!)).some((b) => b.id === barberId);
+      const ok = (await this.barbersFor(turn.barbershopId, [turn.ctx.serviceId!, ...this.extraServices(turn.ctx)])).some(
+        (b) => b.id === barberId,
+      );
       if (!ok) return this.withNotice('Ese barbero no está disponible.', await this.onService(turn, turn.ctx.serviceId!));
     }
     return this.afterBarber(turn, { ...turn.ctx, barberId });
@@ -138,13 +211,21 @@ export class BookingFlow {
       serviceId: ctx.serviceId!,
       days: DAYS_TO_SEARCH,
       barberId: ctx.barberId ?? undefined,
+      extraServiceIds: this.extraServices(ctx),
+      ignoreAppointmentIds: ctx.ignoreIds,
     });
     const days = summary.days.filter((d) => d.availableSlots > 0).slice(0, LIMITS.rowsPerList);
     if (days.length === 0) {
       return {
         state: 'IDLE',
         ctx: {},
-        replies: [this.backToMenu(`No hay horarios disponibles para ${summary.service.name} en los próximos días 😕`)],
+        replies: [
+          this.backToMenu(
+            ctx.guests?.length
+              ? 'No encontré horarios en los próximos días donde entren todos seguidos 😕'
+              : `No hay horarios disponibles para ${summary.service.name} en los próximos días 😕`,
+          ),
+        ],
       };
     }
     const rows = days.map((d) => ({
@@ -154,8 +235,10 @@ export class BookingFlow {
     }));
     const intro =
       ctx.mode === 'reschedule'
-        ? '¿Para qué día querés cambiar el turno?'
-        : `${summary.service.name} (${duration(summary.service.durationMinutes)}, ${price(summary.service.price)}).\n¿Qué día te queda bien?`;
+        ? `¿Para qué día querés cambiar ${ctx.scope === 'all' ? 'los turnos' : 'el turno'}?`
+        : ctx.guests?.length
+          ? `Busco horarios para ${ctx.guests.length + 1} personas seguidas.\n¿Qué día les queda bien?`
+          : `${summary.service.name} (${duration(summary.service.durationMinutes)}, ${price(summary.service.price)}).\n¿Qué día te queda bien?`;
     return { state: 'PICK_DAY', ctx: { ...ctx, date: undefined, page: 0 }, replies: [list(intro, 'Ver días', [{ rows }])] };
   }
 
@@ -229,6 +312,7 @@ export class BookingFlow {
   }
 
   async askConfirm(turn: Turn, ctx: BotContext): Promise<FlowResult> {
+    if (ctx.guests?.length) return this.askGroupConfirm(turn, ctx);
     const [service, barber] = await Promise.all([
       this.prisma.service.findUnique({ where: { id: ctx.serviceId! }, select: { name: true, price: true } }),
       ctx.slotBarberId
@@ -276,10 +360,83 @@ export class BookingFlow {
     };
   }
 
+  /** Resumen de un turno para varias personas: horario de cada uno, uno detrás del otro. */
+  private async askGroupConfirm(turn: Turn, ctx: BotContext): Promise<FlowResult> {
+    const people = [
+      { name: ctx.customerName ?? turn.customer?.name ?? 'Vos', serviceId: ctx.serviceId! },
+      ...(ctx.guests ?? []).map((g) => ({ name: g.name, serviceId: g.serviceId! })),
+    ];
+    const services = await this.prisma.service.findMany({
+      where: { id: { in: people.map((p) => p.serviceId) } },
+      select: { id: true, name: true, durationMinutes: true, price: true },
+    });
+    const byId = new Map(services.map((s) => [s.id, s]));
+    const barber = ctx.slotBarberId
+      ? await this.prisma.barber.findUnique({ where: { id: ctx.slotBarberId }, select: { name: true } })
+      : null;
+
+    let minutes = Number(ctx.slotTime!.slice(0, 2)) * 60 + Number(ctx.slotTime!.slice(3));
+    let total = 0;
+    const lines = people.map((p) => {
+      const s = byId.get(p.serviceId)!;
+      const hhmm = `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+      minutes += s.durationMinutes;
+      total += Number(s.price);
+      return `• ${hhmm} ${p.name} — ${s.name}`;
+    });
+
+    const isReschedule = ctx.mode === 'reschedule';
+    const body =
+      `${isReschedule ? 'Nuevos horarios' : 'Revisá los turnos'} del ${longDate(ctx.date!)}:\n\n${lines.join('\n')}\n\n` +
+      (barber ? `Barbero: ${barber.name}\n` : '') +
+      (isReschedule ? '' : `Total: ${price(total)}`);
+    return {
+      state: 'CONFIRM',
+      ctx,
+      replies: [
+        buttons(body.trim(), [
+          { id: IDS.confirm, title: isReschedule ? '✅ Confirmar cambio' : '✅ Confirmar todos' },
+          { id: IDS.changeSlot, title: '🔄 Cambiar horario' },
+          { id: IDS.abort, title: '✖ Cancelar' },
+        ]),
+      ],
+    };
+  }
+
   /** Guarda el turno. Si otro cliente ganó el horario, vuelve a mostrar los disponibles. */
   async onConfirm(turn: Turn): Promise<FlowResult> {
     const ctx = turn.ctx;
     try {
+      if (ctx.mode === 'reschedule' && ctx.scope === 'all' && ctx.groupId) {
+        const moved = await this.appointments.rescheduleGroup(turn.barbershopId, ctx.groupId, new Date(ctx.slotStart!));
+        const lines = moved.map((a) => `• ${a.localStart} ${a.guestName ?? a.customer.name} — ${a.service.name}`);
+        return {
+          state: 'IDLE',
+          ctx: {},
+          replies: [this.backToMenu(`Listo ✅ Los turnos quedaron para el ${shortDate(moved[0].localDate)}:\n\n${lines.join('\n')}\n\n¡Los esperamos!`)],
+        };
+      }
+      if (ctx.mode !== 'reschedule' && ctx.guests?.length) {
+        const created = await this.appointments.createGroup(
+          turn.barbershopId,
+          {
+            startsAt: new Date(ctx.slotStart!),
+            ...(ctx.barberId ? { barberId: ctx.barberId } : {}),
+            customer: { name: ctx.customerName ?? turn.customer?.name ?? 'Cliente', phone: turn.phone },
+            people: [
+              { serviceId: ctx.serviceId!, guestName: null },
+              ...ctx.guests.map((g) => ({ serviceId: g.serviceId!, guestName: g.name })),
+            ],
+          },
+          { source: 'WHATSAPP' },
+        );
+        const lines = created.map((a) => `• ${a.localStart} ${a.guestName ?? a.customer.name} — ${a.service.name}`);
+        const message =
+          `¡Hola, ${firstName(created[0].customer.name)}! Los turnos quedaron confirmados.\n\n` +
+          `Fecha: ${longDate(created[0].localDate)}.\n${lines.join('\n')}\n` +
+          `Barbero: ${created[0].barber.name}.\n\n¡Los esperamos!`;
+        return { state: 'IDLE', ctx: {}, replies: [this.backToMenu(message)] };
+      }
       if (ctx.mode === 'reschedule') {
         const updated = await this.appointments.reschedule(
           turn.barbershopId,
@@ -354,6 +511,12 @@ export class BookingFlow {
         return this.askSlot(turn, turn.ctx);
       case 'CONFIRM':
         return this.askConfirm(turn, turn.ctx);
+      case 'ASK_PARTY':
+        return this.askParty(turn.ctx);
+      case 'ASK_GUEST_NAME':
+        return this.askGuestName(turn.ctx);
+      case 'ASK_GUEST_SERVICE':
+        return this.askGuestService(turn, turn.ctx, Math.max(0, (turn.ctx.guests ?? []).findIndex((g) => !g.serviceId)));
       default:
         throw new Error(`Estado sin repetición en BookingFlow: ${turn.state}`);
     }
@@ -369,16 +532,26 @@ export class BookingFlow {
 
   private dayAvailability(barbershopId: string, ctx: BotContext) {
     return this.availability
-      .getDay(barbershopId, { serviceId: ctx.serviceId!, date: ctx.date!, barberId: ctx.barberId ?? undefined })
+      .getDay(barbershopId, {
+        serviceId: ctx.serviceId!,
+        date: ctx.date!,
+        barberId: ctx.barberId ?? undefined,
+        extraServiceIds: this.extraServices(ctx),
+        ignoreAppointmentIds: ctx.ignoreIds,
+      })
       .catch((error: unknown) => {
         if (error instanceof BadRequestException || error instanceof NotFoundException) return null;
         throw error;
       });
   }
 
-  private barbersFor(barbershopId: string, serviceId: string) {
+  private barbersFor(barbershopId: string, serviceIds: string[]) {
     return this.prisma.barber.findMany({
-      where: { barbershopId, isActive: true, services: { some: { serviceId } } },
+      where: {
+        barbershopId,
+        isActive: true,
+        AND: [...new Set(serviceIds)].map((serviceId) => ({ services: { some: { serviceId } } })),
+      },
       select: { id: true, name: true },
       orderBy: { name: 'asc' },
     });

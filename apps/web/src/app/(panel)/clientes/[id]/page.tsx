@@ -80,7 +80,8 @@ export default function CustomerPage() {
                   {formatDate(h.localDate)} · <span className="tabular-nums">{h.localStart}</span>
                 </div>
                 <div className="min-w-0 flex-1 truncate text-stone-600">
-                  {h.service} · {h.barber}
+                  {h.service}
+                  {h.guestName && ` · para ${h.guestName}`} · {h.barber}
                 </div>
                 <span className="tabular-nums">{formatPrice(h.price)}</span>
                 <span className={`w-24 shrink-0 rounded-md border px-2 py-0.5 text-center text-xs ${STATUS_STYLE[h.status]}`}>

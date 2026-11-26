@@ -2,7 +2,7 @@
 
 import { DAY_NAMES } from "@/lib/schedule/types";
 import { dayOfWeek, nowMinutesIn, toMinutes } from "@/lib/format";
-import { STATUS_STYLE, type Appointment } from "@/lib/appointments/types";
+import { attendeeLabel, STATUS_STYLE, type Appointment } from "@/lib/appointments/types";
 
 const PX_PER_MIN = 1.1;
 
@@ -94,11 +94,12 @@ export function CalendarGrid({
                       onClick={() => onSelect(a)}
                       className={`absolute inset-x-1 overflow-hidden rounded-md border-l-4 px-2 py-1 text-left text-xs shadow-sm transition hover:brightness-95 ${STATUS_STYLE[a.status]}`}
                       style={{ top: Math.max(top, 0), height: h }}
-                      title={`${a.localStart} ${a.customer.name} · ${a.service.name}`}
+                      title={`${a.localStart} ${attendeeLabel(a)} · ${a.service.name}`}
                     >
                       {a.source === "WHATSAPP" && <span aria-label="Reservado por WhatsApp">📲 </span>}
                       <span className="font-semibold tabular-nums">{a.localStart}</span>{" "}
-                      <span className="font-medium">{a.customer.name}</span>
+                      {a.groupId && <span aria-label="Turno en grupo">👥 </span>}
+                      <span className="font-medium">{attendeeLabel(a)}</span>
                       {h > 34 && <span className="block truncate opacity-80">{a.service.name}</span>}
                     </button>
                   );

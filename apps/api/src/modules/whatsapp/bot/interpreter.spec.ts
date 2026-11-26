@@ -100,3 +100,24 @@ describe('interpret: intenciones', () => {
     expect(run('jaja dale')).toEqual({});
   });
 });
+
+describe('interpret: varias personas', () => {
+  it.each([
+    ['un corte para mí y otro para mi hijo mañana a las 5', 2],
+    ['quiero turno para mi hijo y yo', 2],
+    ['somos 3', 3],
+    ['necesito 2 cortes el sábado', 2],
+    ['para mí, mi papá y mi hermano', 3],
+  ])('%s → %s personas', (text, n) => {
+    expect(run(text).partySize).toBe(n);
+  });
+
+  it('una sola persona no marca grupo', () => {
+    expect(run('quiero un corte mañana a las 5').partySize).toBeUndefined();
+    expect(run('un corte para mi hijo').partySize).toBeUndefined();
+  });
+
+  it('"para las 5" no es cantidad de personas', () => {
+    expect(run('turno mañana para las 5').partySize).toBeUndefined();
+  });
+});

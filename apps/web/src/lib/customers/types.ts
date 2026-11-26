@@ -23,6 +23,7 @@ export interface CustomerHistoryItem {
   service: string;
   barber: string;
   price: number;
+  guestName: string | null;
 }
 
 export type CustomerDetail = CustomerSummary & { history: CustomerHistoryItem[] };

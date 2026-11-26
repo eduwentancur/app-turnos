@@ -15,6 +15,10 @@ export interface AppointmentResponse {
   customer: { id: string; name: string; phone: string; notes: string | null };
   price: number;
   notes: string | null;
+  /** Persona que se atiende si no es quien reservó */
+  guestName: string | null;
+  /** Turnos reservados juntos comparten groupId */
+  groupId: string | null;
   cancelledAt: string | null;
   createdAt: string;
 }

@@ -33,6 +33,8 @@ interface Context {
   stepMinutes: number;
   cuts: { afternoonStartsAt: string; eveningStartsAt: string };
   service: { id: string; name: string; durationMinutes: number; price: number };
+  /** Suma de duraciones: un servicio, o varios seguidos (turno para varias personas) */
+  totalDurationMinutes: number;
   barbers: BarberContext[];
 }
 
@@ -52,9 +54,16 @@ export class AvailabilityService {
 
   async getDay(
     barbershopId: string,
-    query: { serviceId: string; date: string; barberId?: string },
+    query: { serviceId: string; date: string; barberId?: string; extraServiceIds?: string[]; ignoreAppointmentIds?: string[] },
   ): Promise<DayAvailabilityResponse> {
-    const ctx = await this.loadContext(barbershopId, query.serviceId, query.barberId, query.date, query.date);
+    const ctx = await this.loadContext(
+      barbershopId,
+      [query.serviceId, ...(query.extraServiceIds ?? [])],
+      query.barberId,
+      query.date,
+      query.date,
+      query.ignoreAppointmentIds,
+    );
     this.assertBookableDate(query.date, ctx.timezone);
 
     const slots = this.slotsFor(ctx, query.date);
@@ -73,7 +82,14 @@ export class AvailabilityService {
 
   async getDays(
     barbershopId: string,
-    query: { serviceId: string; from?: string; days: number; barberId?: string },
+    query: {
+      serviceId: string;
+      from?: string;
+      days: number;
+      barberId?: string;
+      extraServiceIds?: string[];
+      ignoreAppointmentIds?: string[];
+    },
   ): Promise<DaysAvailabilityResponse> {
     const shop = await this.getShop(barbershopId);
     const today = utcToLocal(new Date(), shop.timezone).date;
@@ -84,7 +100,14 @@ export class AvailabilityService {
       throw new BadRequestException(`Solo se puede reservar hasta ${MAX_DAYS_AHEAD} días adelante`);
     }
 
-    const ctx = await this.loadContext(barbershopId, query.serviceId, query.barberId, from, to);
+    const ctx = await this.loadContext(
+      barbershopId,
+      [query.serviceId, ...(query.extraServiceIds ?? [])],
+      query.barberId,
+      from,
+      to,
+      query.ignoreAppointmentIds,
+    );
     const days = [];
     for (let date = from; date <= to; date = addDaysToDate(date, 1)) {
       days.push({ date, dayOfWeek: dayOfWeekOf(date), availableSlots: this.slotsFor(ctx, date).length });
@@ -99,17 +122,25 @@ export class AvailabilityService {
    */
   async findFreeBarbers(
     barbershopId: string,
-    params: { serviceId: string; startsAt: Date; barberId?: string; ignoreAppointmentId?: string },
+    params: {
+      serviceId: string;
+      startsAt: Date;
+      barberId?: string;
+      ignoreAppointmentId?: string;
+      /** Servicios que siguen a continuación con el mismo barbero (turno en grupo) */
+      extraServiceIds?: string[];
+      ignoreAppointmentIds?: string[];
+    },
   ): Promise<string[]> {
     const shop = await this.getShop(barbershopId);
     const date = utcToLocal(params.startsAt, shop.timezone).date;
     const ctx = await this.loadContext(
       barbershopId,
-      params.serviceId,
+      [params.serviceId, ...(params.extraServiceIds ?? [])],
       params.barberId,
       date,
       date,
-      params.ignoreAppointmentId,
+      [...(params.ignoreAppointmentIds ?? []), ...(params.ignoreAppointmentId ? [params.ignoreAppointmentId] : [])],
     );
     const slot = this.slotsFor(ctx, date).find((s) => s.start.getTime() === params.startsAt.getTime());
     return slot?.barberIds ?? [];
@@ -125,7 +156,7 @@ export class AvailabilityService {
     return calculateSlots({
       date,
       timezone: ctx.timezone,
-      durationMinutes: ctx.service.durationMinutes,
+      durationMinutes: ctx.totalDurationMinutes,
       stepMinutes: ctx.stepMinutes,
       notBefore: new Date(Date.now() + MIN_LEAD_MINUTES * 60_000),
       barbers,
@@ -134,24 +165,29 @@ export class AvailabilityService {
 
   private async loadContext(
     barbershopId: string,
-    serviceId: string,
+    serviceIds: string[],
     barberId: string | undefined,
     fromDate: string,
     toDate: string,
-    ignoreAppointmentId?: string,
+    ignoreAppointmentIds: string[] = [],
   ): Promise<Context> {
     const shop = await this.getShop(barbershopId);
 
-    const service = await this.prisma.service.findFirst({
-      where: { id: serviceId, barbershopId, isActive: true },
+    const distinct = [...new Set(serviceIds)];
+    const found = await this.prisma.service.findMany({
+      where: { id: { in: distinct }, barbershopId, isActive: true },
     });
-    if (!service) throw new NotFoundException('Servicio no encontrado o inactivo');
+    if (found.length !== distinct.length) throw new NotFoundException('Servicio no encontrado o inactivo');
+    const byId = new Map(found.map((s) => [s.id, s]));
+    const service = byId.get(serviceIds[0])!;
+    const totalDurationMinutes = serviceIds.reduce((sum, id) => sum + byId.get(id)!.durationMinutes, 0);
 
+    // El barbero tiene que hacer todos los servicios (turnos en grupo: uno detrás de otro)
     const barbers = await this.prisma.barber.findMany({
       where: {
         barbershopId,
         isActive: true,
-        services: { some: { serviceId } },
+        AND: distinct.map((id) => ({ services: { some: { serviceId: id } } })),
         ...(barberId ? { id: barberId } : {}),
       },
       select: { id: true },
@@ -176,7 +212,7 @@ export class AvailabilityService {
           status: { in: [...ACTIVE_STATUSES] },
           startsAt: { lt: rangeEnd },
           endsAt: { gt: rangeStart },
-          ...(ignoreAppointmentId ? { id: { not: ignoreAppointmentId } } : {}),
+          ...(ignoreAppointmentIds.length ? { id: { notIn: ignoreAppointmentIds } } : {}),
         },
         select: { barberId: true, startsAt: true, endsAt: true },
       }),
@@ -210,6 +246,7 @@ export class AvailabilityService {
         durationMinutes: service.durationMinutes,
         price: Number(service.price.toString()),
       },
+      totalDurationMinutes,
       barbers: barberIds.map((id) => {
         const own = hours.filter((h) => h.barberId === id);
         return {

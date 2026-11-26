@@ -40,6 +40,7 @@ export interface CustomerHistoryItem {
   service: string;
   barber: string;
   price: number;
+  guestName: string | null;
 }
 
 export type CustomerDetail = CustomerSummary & { history: CustomerHistoryItem[] };
@@ -129,6 +130,7 @@ export class CustomersService {
           service: a.service.name,
           barber: a.barber.name,
           price: Number(a.priceAtBooking.toString()),
+          guestName: a.guestName,
         };
       }),
     };

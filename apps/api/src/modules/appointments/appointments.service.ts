@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { isOverlapViolation } from '../../common/prisma-errors.js';
 import { addDaysToDate, localToUtc, utcToLocal } from '../../common/time.js';
@@ -130,6 +131,7 @@ export class AppointmentsService {
             status: 'CONFIRMED',
             source: options.source,
             notes: input.notes || null,
+            guestName: input.guestName || null,
           },
           include,
         });
@@ -171,6 +173,147 @@ export class AppointmentsService {
     } catch (error) {
       throw this.translate(error);
     }
+  }
+
+  /**
+   * Reserva varios turnos seguidos con el mismo barbero (ej. padre e hijo).
+   * Todo o nada: si no entran todos, no se reserva ninguno.
+   */
+  async createGroup(
+    barbershopId: string,
+    input: {
+      startsAt: Date;
+      customer: { name: string; phone: string };
+      people: { serviceId: string; guestName: string | null }[];
+      barberId?: string;
+    },
+    options: Pick<BookingOptions, 'source'>,
+  ): Promise<AppointmentResponse[]> {
+    if (input.people.length < 1 || input.people.length > 5) {
+      throw new BadRequestException('Un turno en grupo admite de 1 a 5 personas');
+    }
+    const tz = await this.timezone(barbershopId);
+    this.assertFuture(input.startsAt);
+
+    const ids = input.people.map((p) => p.serviceId);
+    const services = await this.prisma.service.findMany({ where: { id: { in: ids }, barbershopId, isActive: true } });
+    const byId = new Map(services.map((s) => [s.id, s]));
+    if (ids.some((id) => !byId.has(id))) throw new NotFoundException('Servicio no encontrado o inactivo');
+
+    const free = await this.availability.findFreeBarbers(barbershopId, {
+      serviceId: ids[0],
+      extraServiceIds: ids.slice(1),
+      startsAt: input.startsAt,
+      barberId: input.barberId,
+    });
+    if (free.length === 0) {
+      throw new ConflictException('No hay lugar para todos seguidos en ese horario. Elegí otro.');
+    }
+
+    try {
+      const created = await this.prisma.$transaction(async (tx) => {
+        const customer = await this.customers.findOrCreate(barbershopId, input.customer, tx);
+        const groupId = randomUUID();
+        const rows = [];
+        let cursor = input.startsAt.getTime();
+        for (const person of input.people) {
+          const service = byId.get(person.serviceId)!;
+          const startsAt = new Date(cursor);
+          cursor += service.durationMinutes * 60_000;
+          rows.push(
+            await tx.appointment.create({
+              data: {
+                barbershopId,
+                customerId: customer.id,
+                barberId: free[0],
+                serviceId: service.id,
+                startsAt,
+                endsAt: new Date(cursor),
+                priceAtBooking: service.price,
+                status: 'CONFIRMED',
+                source: options.source,
+                guestName: person.guestName,
+                groupId,
+              },
+              include,
+            }),
+          );
+        }
+        return rows;
+      });
+      return created.map((a) => this.toResponse(a, tz));
+    } catch (error) {
+      throw this.translate(error);
+    }
+  }
+
+  /** Turnos activos de un grupo, en orden. */
+  async listGroup(barbershopId: string, groupId: string): Promise<AppointmentResponse[]> {
+    const tz = await this.timezone(barbershopId);
+    const rows = await this.prisma.appointment.findMany({
+      where: { barbershopId, groupId, status: { in: [...ACTIVE] } },
+      include,
+      orderBy: { startsAt: 'asc' },
+    });
+    return rows.map((r) => this.toResponse(r, tz));
+  }
+
+  /** Mueve todo el grupo a un nuevo horario de inicio, manteniendo el orden. */
+  async rescheduleGroup(barbershopId: string, groupId: string, startsAt: Date): Promise<AppointmentResponse[]> {
+    const tz = await this.timezone(barbershopId);
+    const current = await this.prisma.appointment.findMany({
+      where: { barbershopId, groupId, status: { in: [...ACTIVE] } },
+      include,
+      orderBy: { startsAt: 'asc' },
+    });
+    if (current.length === 0) throw new NotFoundException('Turnos no encontrados');
+    this.assertFuture(startsAt);
+
+    const free = await this.availability.findFreeBarbers(barbershopId, {
+      serviceId: current[0].serviceId,
+      extraServiceIds: current.slice(1).map((a) => a.serviceId),
+      startsAt,
+      ignoreAppointmentIds: current.map((a) => a.id),
+    });
+    if (free.length === 0) throw new ConflictException('No hay lugar para todos seguidos en ese horario. Elegí otro.');
+
+    try {
+      const updated = await this.prisma.$transaction(async (tx) => {
+        // Primero se "estacionan" en horarios ficticios distintos (1970) para que la constraint
+        // anti-superposición no choque con el propio grupo mientras se reacomodan
+        for (const [i, a] of current.entries()) {
+          await tx.appointment.update({
+            where: { id: a.id },
+            data: { startsAt: new Date(i * 60_000), endsAt: new Date(i * 60_000 + 1_000) },
+          });
+        }
+        const rows = [];
+        let cursor = startsAt.getTime();
+        for (const a of current) {
+          const s = new Date(cursor);
+          cursor += a.service.durationMinutes * 60_000;
+          rows.push(
+            await tx.appointment.update({
+              where: { id: a.id },
+              data: { startsAt: s, endsAt: new Date(cursor), barberId: free[0] },
+              include,
+            }),
+          );
+        }
+        return rows;
+      });
+      return updated.map((a) => this.toResponse(a, tz));
+    } catch (error) {
+      throw this.translate(error);
+    }
+  }
+
+  async cancelGroup(barbershopId: string, groupId: string, input: CancelInput): Promise<AppointmentResponse[]> {
+    const active = await this.listGroup(barbershopId, groupId);
+    if (active.length === 0) throw new ConflictException('No hay turnos activos en ese grupo');
+    const results = [];
+    for (const a of active) results.push(await this.cancel(barbershopId, a.id, input));
+    return results;
   }
 
   /** Cancela y libera el horario (la constraint solo considera turnos activos). */
@@ -306,6 +449,8 @@ export class AppointmentsService {
       customer: a.customer,
       price: Number(a.priceAtBooking.toString()),
       notes: a.notes,
+      guestName: a.guestName,
+      groupId: a.groupId,
       cancelledAt: a.cancelledAt?.toISOString() ?? null,
       createdAt: a.createdAt.toISOString(),
     };

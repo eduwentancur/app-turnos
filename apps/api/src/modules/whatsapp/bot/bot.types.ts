@@ -10,7 +10,11 @@ export type BotState =
   | 'PICK_SLOT'
   | 'CONFIRM'
   | 'PICK_APPOINTMENT'
-  | 'CONFIRM_CANCEL';
+  | 'CONFIRM_CANCEL'
+  | 'ASK_PARTY'
+  | 'ASK_GUEST_NAME'
+  | 'ASK_GUEST_SERVICE'
+  | 'CONFIRM_SCOPE';
 
 export interface BotContext {
   /** book = reserva nueva · reschedule = cambiar un turno · cancel = cancelar uno */
@@ -26,6 +30,15 @@ export interface BotContext {
   slotTime?: string;
   slotBarberId?: string;
   appointmentId?: string;
+  /** Cantidad de personas del turno (1 = solo quien escribe) */
+  partySize?: number;
+  /** Acompañantes: nombre y servicio de cada uno (turnos seguidos) */
+  guests?: { name: string; serviceId?: string }[];
+  /** Al cambiar / cancelar: grupo de turnos y si aplica a todos o a uno */
+  groupId?: string;
+  scope?: 'all' | 'one';
+  /** Turnos propios que no cuentan como ocupados al reprogramar */
+  ignoreIds?: string[];
   /** Lo que el cliente pidió en texto libre o audio y todavía no se aplicó */
   pref?: { date?: string; time?: string; period?: DayPeriod };
 }
@@ -72,9 +85,11 @@ export const IDS = {
   abort: 'ABORT',
   cancelYes: 'CANCEL_YES',
   cancelNo: 'CANCEL_NO',
+  scopeAll: 'SCOPE:ALL',
+  scopeOne: 'SCOPE:ONE',
 } as const;
 
-export const prefixed = (prefix: 'SVC' | 'BRB' | 'DAY' | 'SLOT' | 'MORE' | 'APPT', value: string | number) =>
+export const prefixed = (prefix: 'SVC' | 'BRB' | 'DAY' | 'SLOT' | 'MORE' | 'APPT' | 'PARTY', value: string | number) =>
   `${prefix}:${value}`;
 
 export function parseReply(id: string): { prefix: string; value: string } {

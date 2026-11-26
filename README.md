@@ -192,6 +192,18 @@ Estructura (`apps/api/src/modules/whatsapp/`):
 
 Para conectar el número real seguí [docs/whatsapp-setup.md](docs/whatsapp-setup.md).
 
+### Turnos para varias personas
+
+Ej.: un padre que viene con su hijo. Después de elegir el servicio el bot pregunta *"¿Solo para vos o para más
+personas?"* (hasta 3). Por cada acompañante pide nombre y servicio. Solo ofrece horarios donde **entran todos
+seguidos con el mismo barbero** y se confirma con un único botón. La reserva es **todo o nada**
+(`AppointmentsService.createGroup`, en una transacción): si no hay lugar para todos, no se reserva ninguno.
+
+- Cada persona es un turno propio con `guestName` (quién se atiende) y un `groupId` compartido.
+- Al cancelar o cambiar, el bot pregunta si es para todos o solo para uno (`rescheduleGroup`, `cancelGroup`).
+- También entiende texto/audio como *"un corte para mí y otro para mi hijo mañana a las 5"* o *"somos 3"*.
+- En el panel se ven como "Benja (de Diego)" con 👥, y el detalle lista al resto del grupo.
+
 ### Texto libre y audios
 
 - `bot/interpreter.ts`: intérprete por reglas (sin costo) que entiende pedidos en español rioplatense:

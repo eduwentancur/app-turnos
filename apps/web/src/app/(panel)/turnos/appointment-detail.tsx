@@ -5,13 +5,14 @@ import Link from "next/link";
 import { Alert, Button, Field } from "@/components/ui";
 import { errorMessage } from "@/lib/api-client";
 import { formatDate, formatPrice } from "@/lib/format";
-import { STATUS_LABEL, STATUS_STYLE, type Appointment } from "@/lib/appointments/types";
+import { attendeeLabel, STATUS_LABEL, STATUS_STYLE, type Appointment } from "@/lib/appointments/types";
 import { SlotPicker } from "./slot-picker";
 
 type Mode = "view" | "reschedule" | "cancel";
 
 export function AppointmentDetail({
   appointment: a,
+  group = [],
   today,
   onReschedule,
   onCancel,
@@ -19,6 +20,8 @@ export function AppointmentDetail({
   onClose,
 }: {
   appointment: Appointment;
+  /** Otros turnos de la misma reserva en grupo */
+  group?: Appointment[];
   today: string;
   onReschedule: (startsAt: string) => Promise<unknown>;
   onCancel: (reason?: string) => Promise<unknown>;
@@ -66,9 +69,13 @@ export function AppointmentDetail({
       </div>
 
       <div className="rounded-xl bg-stone-50 p-4 text-sm">
-        <Link href={`/clientes/${a.customer.id}`} className="font-medium hover:underline">
-          {a.customer.name}
-        </Link>
+        {a.guestName && <p className="font-medium">Para: {a.guestName}</p>}
+        <p className={a.guestName ? "text-stone-600" : "font-medium"}>
+          {a.guestName && "Reservó: "}
+          <Link href={`/clientes/${a.customer.id}`} className="hover:underline">
+            {a.customer.name}
+          </Link>
+        </p>
         <a href={waLink} target="_blank" rel="noreferrer" className="tabular-nums text-emerald-700 hover:underline">
           {a.customer.phone} · abrir WhatsApp
         </a>
@@ -78,6 +85,20 @@ export function AppointmentDetail({
         {a.notes && <p className="mt-2 whitespace-pre-line text-stone-600">{a.notes}</p>}
         <p className="mt-2 text-xs text-stone-400">Reservado desde {a.source === "WHATSAPP" ? "WhatsApp" : "el panel"}</p>
       </div>
+
+      {group.length > 0 && (
+        <div className="rounded-xl border border-stone-200 p-4 text-sm">
+          <p className="mb-1.5 font-medium">👥 Reserva en grupo</p>
+          <ul className="space-y-0.5 text-stone-600">
+            {group.map((g) => (
+              <li key={g.id} className="tabular-nums">
+                {g.localStart} · {attendeeLabel(g)} · {g.service.name}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-xs text-stone-400">Cancelar o reprogramar acá afecta solo a este turno.</p>
+        </div>
+      )}
 
       {error && <Alert>{error}</Alert>}
 
