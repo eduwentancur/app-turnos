@@ -116,3 +116,21 @@ export function nowMinutesIn(timezone: string): number {
   const get = (t: string) => Number(parts.find((p) => p.type === t)?.value);
   return get("hour") * 60 + get("minute");
 }
+
+/** "hoy", "ayer", "hace 5 días", "hace 3 meses" */
+export function timeAgo(iso: string, now: number): string {
+  const days = Math.floor((now - Date.parse(iso)) / 86_400_000);
+  if (days <= 0) return "hoy";
+  if (days === 1) return "ayer";
+  if (days < 30) return `hace ${days} días`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `hace ${months} ${months === 1 ? "mes" : "meses"}`;
+  const years = Math.floor(months / 12);
+  return `hace ${years} ${years === 1 ? "año" : "años"}`;
+}
+
+/** "+5493764123456" -> "+54 9 3764 12-3456" (formato legible para Argentina) */
+export function formatPhone(phone: string): string {
+  const m = phone.match(/^\+549(\d{4})(\d{2})(\d{4})$/);
+  return m ? `+54 9 ${m[1]} ${m[2]}-${m[3]}` : phone;
+}

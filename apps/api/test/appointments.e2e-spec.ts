@@ -86,8 +86,8 @@ describe('Appointments (e2e)', () => {
       .post('/api/appointments', { serviceId, startsAt: at('11:00'), customer: { name: 'Juan', phone: '5493764111222' } })
       .expect(201);
     const found = await as(owner).get('/api/customers?search=111222').expect(200);
-    expect(found.body).toHaveLength(1);
-    expect(found.body[0].id).toBe(res.body.customer.id);
+    expect(found.body.total).toBe(1);
+    expect(found.body.items[0].id).toBe(res.body.customer.id);
     await as(owner).post(`/api/appointments/${res.body.id}/cancel`).expect(201);
   });
 

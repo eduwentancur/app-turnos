@@ -1,20 +1,45 @@
-import { Controller, Get, Query } from '@nestjs/common';
-import { z } from 'zod';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Query } from '@nestjs/common';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import type { AuthUser } from '../auth/auth.types.js';
-import { CustomersService, type CustomerResponse } from './customers.service.js';
-
-const searchSchema = z.object({ search: z.string().max(60).optional() });
+import {
+  CustomersService,
+  type CustomerDetail,
+  type CustomerPage,
+  type CustomerResponse,
+} from './customers.service.js';
+import {
+  listCustomersQuerySchema,
+  updateCustomerSchema,
+  type ListCustomersQuery,
+  type UpdateCustomerInput,
+} from './customers.schemas.js';
 
 @Controller('customers')
 export class CustomersController {
   constructor(private readonly customers: CustomersService) {}
 
   @Get()
-  search(
+  list(
     @CurrentUser() user: AuthUser,
-    @Query({ schema: searchSchema }) query: z.infer<typeof searchSchema>,
-  ): Promise<CustomerResponse[]> {
-    return this.customers.search(user.barbershopId, query.search);
+    @Query({ schema: listCustomersQuerySchema }) query: ListCustomersQuery,
+  ): Promise<CustomerPage> {
+    return this.customers.list(user.barbershopId, query);
+  }
+
+  @Get(':id')
+  findOne(
+    @CurrentUser() user: AuthUser,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ): Promise<CustomerDetail> {
+    return this.customers.findOne(user.barbershopId, id);
+  }
+
+  @Patch(':id')
+  update(
+    @CurrentUser() user: AuthUser,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body({ schema: updateCustomerSchema }) body: UpdateCustomerInput,
+  ): Promise<CustomerResponse> {
+    return this.customers.update(user.barbershopId, id, body);
   }
 }

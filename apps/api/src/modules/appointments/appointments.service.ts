@@ -22,7 +22,7 @@ import type {
 const include = {
   service: { select: { id: true, name: true, durationMinutes: true } },
   barber: { select: { id: true, name: true } },
-  customer: { select: { id: true, name: true, phone: true } },
+  customer: { select: { id: true, name: true, phone: true, notes: true } },
 } as const;
 
 const ACTIVE = ['PENDING', 'CONFIRMED'] as const;

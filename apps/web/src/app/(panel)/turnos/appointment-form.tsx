@@ -14,9 +14,11 @@ export function AppointmentForm({
   initialDate,
   today,
   timezone,
+  initialCustomer,
   onSubmit,
   onCancel,
 }: {
+  initialCustomer?: Customer;
   services: Service[];
   initialDate: string;
   today: string;
@@ -31,9 +33,9 @@ export function AppointmentForm({
   const [slotStart, setSlotStart] = useState<string | null>(null);
   const [outside, setOutside] = useState(false);
   const [manualTime, setManualTime] = useState("10:00");
-  const [phone, setPhone] = useState("");
-  const [name, setName] = useState("");
-  const [customerId, setCustomerId] = useState<string | null>(null);
+  const [phone, setPhone] = useState(initialCustomer?.phone ?? "");
+  const [name, setName] = useState(initialCustomer?.name ?? "");
+  const [customerId, setCustomerId] = useState<string | null>(initialCustomer?.id ?? null);
   const [suggestions, setSuggestions] = useState<Customer[]>([]);
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -46,8 +48,8 @@ export function AppointmentForm({
     let cancelled = false;
     const t = setTimeout(() => {
       apiFetch(`/api/customers?search=${encodeURIComponent(term)}`)
-        .then((res) => (res.ok ? (res.json() as Promise<Customer[]>) : []))
-        .then((list) => !cancelled && setSuggestions(list.slice(0, 5)))
+        .then((res) => (res.ok ? (res.json() as Promise<{ items: Customer[] }>) : { items: [] }))
+        .then((page) => !cancelled && setSuggestions(page.items.slice(0, 5)))
         .catch(() => undefined);
     }, 250);
     return () => {

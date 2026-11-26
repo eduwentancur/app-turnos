@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import type { Metadata } from "next";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
@@ -16,7 +17,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${GeistSans.variable} ${GeistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-stone-50 text-stone-900">
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider>
+          {/* Rutas dinámicas (ej. /clientes/[id]) leen la URL en componentes cliente */}
+          <Suspense>{children}</Suspense>
+        </AuthProvider>
       </body>
     </html>
   );

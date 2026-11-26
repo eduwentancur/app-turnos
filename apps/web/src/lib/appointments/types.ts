@@ -11,7 +11,7 @@ export interface Appointment {
   localEnd: string;
   service: { id: string; name: string; durationMinutes: number };
   barber: { id: string; name: string };
-  customer: { id: string; name: string; phone: string };
+  customer: { id: string; name: string; phone: string; notes: string | null };
   price: number;
   notes: string | null;
   cancelledAt: string | null;

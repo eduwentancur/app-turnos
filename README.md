@@ -153,7 +153,9 @@ La pantalla **Vista del cliente** simula el flujo de WhatsApp (servicio → día
 | `PATCH /api/appointments/:id/reschedule` | Reprograma a otro horario libre |
 | `POST /api/appointments/:id/cancel` | Cancela y libera el horario |
 | `PATCH /api/appointments/:id/status` | `COMPLETED` / `NO_SHOW` (después de la hora) |
-| `GET /api/customers?search=` | Busca clientes por nombre o teléfono |
+| `GET /api/customers?search=&sort=recent\|frequent\|inactive\|name&page=&pageSize=` | Clientes con estadísticas |
+| `GET /api/customers/:id` | Ficha con estadísticas e historial de turnos |
+| `PATCH /api/customers/:id` | Edita nombre, teléfono (normalizado, único) y notas |
 
 - Cada reserva se valida contra la disponibilidad real (`findFreeBarbers`) y, además, la exclusion
   constraint de PostgreSQL rechaza choques simultáneos → `409 Ese horario se acaba de ocupar`.
@@ -161,6 +163,8 @@ La pantalla **Vista del cliente** simula el flujo de WhatsApp (servicio → día
   (`3764 123456` → `+5493764123456`).
 - OWNER puede reservar fuera del horario de atención (`allowOutsideSchedule`); igual se evitan choques.
 - El precio queda congelado en el turno (`priceAtBooking`) para estadísticas.
+- Estadísticas de cliente: una *visita* es un turno pasado que no fue cancelado ni marcado "no vino"
+  (si nadie lo marcó, se asume que vino). Las notas del cliente se muestran en el detalle de cada turno.
 
 ## Notas
 
@@ -170,5 +174,5 @@ La pantalla **Vista del cliente** simula el flujo de WhatsApp (servicio → día
 ## Roadmap
 
 1. ✅ Etapa 1 — Preparación: monorepo, Prisma, PostgreSQL, health check
-2. 🔄 Etapa 2 — MVP: ✅ auth admin · ✅ servicios · ✅ horarios · ✅ disponibilidad · ✅ turnos y calendario
+2. 🔄 Etapa 2 — MVP: ✅ auth admin · ✅ servicios · ✅ horarios · ✅ disponibilidad · ✅ turnos y calendario · ✅ clientes
 3. ⏳ Etapa 3 — WhatsApp Cloud API: webhooks, bot de reservas, confirmaciones y recordatorios

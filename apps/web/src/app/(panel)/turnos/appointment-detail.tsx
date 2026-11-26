@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Alert, Button, Field } from "@/components/ui";
 import { errorMessage } from "@/lib/api-client";
 import { formatDate, formatPrice } from "@/lib/format";
@@ -65,10 +66,15 @@ export function AppointmentDetail({
       </div>
 
       <div className="rounded-xl bg-stone-50 p-4 text-sm">
-        <p className="font-medium">{a.customer.name}</p>
+        <Link href={`/clientes/${a.customer.id}`} className="font-medium hover:underline">
+          {a.customer.name}
+        </Link>
         <a href={waLink} target="_blank" rel="noreferrer" className="tabular-nums text-emerald-700 hover:underline">
           {a.customer.phone} · abrir WhatsApp
         </a>
+        {a.customer.notes && (
+          <p className="mt-2 whitespace-pre-line rounded-lg bg-amber-50 px-2.5 py-1.5 text-amber-900">📝 {a.customer.notes}</p>
+        )}
         {a.notes && <p className="mt-2 whitespace-pre-line text-stone-600">{a.notes}</p>}
         <p className="mt-2 text-xs text-stone-400">Reservado desde {a.source === "WHATSAPP" ? "WhatsApp" : "el panel"}</p>
       </div>
