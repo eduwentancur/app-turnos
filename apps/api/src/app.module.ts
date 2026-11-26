@@ -7,6 +7,7 @@ import { PrismaModule } from './prisma/prisma.module.js';
 import { HealthModule } from './modules/health/health.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { ServicesModule } from './modules/services/services.module.js';
+import { ScheduleModule } from './modules/schedule/schedule.module.js';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { ServicesModule } from './modules/services/services.module.js';
     HealthModule,
     AuthModule,
     ServicesModule,
+    ScheduleModule,
   ],
   providers: [
     // useExisting permite reemplazar el guard en tests (overrideProvider)

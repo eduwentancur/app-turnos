@@ -109,6 +109,21 @@ pnpm dev              # API + web en paralelo
 - Nombre: 2–24 caracteres (límite de una fila de lista de WhatsApp), único por barbería sin distinguir mayúsculas.
 - Duración: 5–480 min, múltiplo de 5. Precio: ≥ 0, hasta 2 decimales.
 
+## Horarios y bloqueos
+
+| Endpoint | Rol | Descripción |
+|---|---|---|
+| `GET /api/schedule/working-hours?barberId=` | Todos | Semana (7 días) con sus franjas en hora local |
+| `PUT /api/schedule/working-hours` | OWNER | Reemplaza la semana completa (atómico) |
+| `GET /api/schedule/time-offs?from=AAAA-MM-DD` | Todos | Bloqueos desde una fecha (por defecto hoy) |
+| `POST /api/schedule/time-offs` | OWNER | Bloqueo de día(s) completo(s) o rango horario |
+| `DELETE /api/schedule/time-offs/:id` | OWNER | Quita un bloqueo |
+
+- Hasta 4 franjas por día, sin superposición (las franjas separadas modelan el descanso).
+- Sin `barberId` = horario general de la barbería; con `barberId` = horario propio de ese barbero.
+- Los bloqueos se reciben en fecha/hora local y se guardan en UTC según la zona horaria de la barbería.
+  Al crear uno se informa cuántos turnos activos caen dentro (`conflictingAppointments`).
+
 ## Notas
 
 - Las exclusion constraints no se pueden declarar en `schema.prisma`; viven en SQL dentro de las migraciones. Si en el futuro se regeneran migraciones, hay que conservarlas.
@@ -117,5 +132,5 @@ pnpm dev              # API + web en paralelo
 ## Roadmap
 
 1. ✅ Etapa 1 — Preparación: monorepo, Prisma, PostgreSQL, health check
-2. 🔄 Etapa 2 — MVP: ✅ auth admin · ✅ servicios · ⏳ horarios, disponibilidad, turnos, calendario
+2. 🔄 Etapa 2 — MVP: ✅ auth admin · ✅ servicios · ✅ horarios · ⏳ disponibilidad, turnos, calendario
 3. ⏳ Etapa 3 — WhatsApp Cloud API: webhooks, bot de reservas, confirmaciones y recordatorios

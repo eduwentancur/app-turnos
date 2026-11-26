@@ -10,7 +10,7 @@ const NAV = [
   { href: "/", label: "Inicio", ready: true },
   { href: "/turnos", label: "Turnos", ready: false },
   { href: "/servicios", label: "Servicios", ready: true },
-  { href: "/horarios", label: "Horarios", ready: false },
+  { href: "/horarios", label: "Horarios", ready: true },
   { href: "/clientes", label: "Clientes", ready: false },
   { href: "/cuenta", label: "Mi cuenta", ready: true },
 ];
