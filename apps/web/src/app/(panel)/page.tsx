@@ -16,8 +16,8 @@ export default function HomePage() {
           <li>✅ Servicios y precios</li>
           <li>✅ Horarios de atención y bloqueos</li>
           <li>✅ Disponibilidad (probala en Vista del cliente)</li>
-          <li>• Reserva de turnos</li>
-          <li>• Calendario de turnos</li>
+          <li>✅ Turnos y calendario</li>
+          <li>• Integración con WhatsApp</li>
         </ul>
       </div>
     </div>

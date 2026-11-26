@@ -143,6 +143,25 @@ Cómo se calcula (`slot-calculator.ts`, función pura con tests unitarios):
 `AvailabilityService.findFreeBarbers()` valida un horario puntual y es lo que usará la reserva antes de confirmar.
 La pantalla **Vista del cliente** simula el flujo de WhatsApp (servicio → día → horario) con la paginación de 10 filas.
 
+## Turnos
+
+| Endpoint | Descripción |
+|---|---|
+| `GET /api/appointments?from=&to=[&status=&barberId=&includeCancelled=true]` | Turnos de un rango (máx. 62 días) |
+| `GET /api/appointments/:id` | Detalle |
+| `POST /api/appointments` | Reserva (cliente existente `customerId` o nuevo `customer: {name, phone}`) |
+| `PATCH /api/appointments/:id/reschedule` | Reprograma a otro horario libre |
+| `POST /api/appointments/:id/cancel` | Cancela y libera el horario |
+| `PATCH /api/appointments/:id/status` | `COMPLETED` / `NO_SHOW` (después de la hora) |
+| `GET /api/customers?search=` | Busca clientes por nombre o teléfono |
+
+- Cada reserva se valida contra la disponibilidad real (`findFreeBarbers`) y, además, la exclusion
+  constraint de PostgreSQL rechaza choques simultáneos → `409 Ese horario se acaba de ocupar`.
+- El cliente se identifica por teléfono (como en WhatsApp). Se normaliza a E.164 con reglas para Argentina
+  (`3764 123456` → `+5493764123456`).
+- OWNER puede reservar fuera del horario de atención (`allowOutsideSchedule`); igual se evitan choques.
+- El precio queda congelado en el turno (`priceAtBooking`) para estadísticas.
+
 ## Notas
 
 - Las exclusion constraints no se pueden declarar en `schema.prisma`; viven en SQL dentro de las migraciones. Si en el futuro se regeneran migraciones, hay que conservarlas.
@@ -151,5 +170,5 @@ La pantalla **Vista del cliente** simula el flujo de WhatsApp (servicio → día
 ## Roadmap
 
 1. ✅ Etapa 1 — Preparación: monorepo, Prisma, PostgreSQL, health check
-2. 🔄 Etapa 2 — MVP: ✅ auth admin · ✅ servicios · ✅ horarios · ✅ disponibilidad · ⏳ turnos, calendario
+2. 🔄 Etapa 2 — MVP: ✅ auth admin · ✅ servicios · ✅ horarios · ✅ disponibilidad · ✅ turnos y calendario
 3. ⏳ Etapa 3 — WhatsApp Cloud API: webhooks, bot de reservas, confirmaciones y recordatorios

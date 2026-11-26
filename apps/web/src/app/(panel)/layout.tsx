@@ -8,7 +8,7 @@ import { FullScreenLoader } from "@/components/ui";
 
 const NAV = [
   { href: "/", label: "Inicio", ready: true },
-  { href: "/turnos", label: "Turnos", ready: false },
+  { href: "/turnos", label: "Turnos", ready: true },
   { href: "/servicios", label: "Servicios", ready: true },
   { href: "/horarios", label: "Horarios", ready: true },
   { href: "/clientes", label: "Clientes", ready: false },

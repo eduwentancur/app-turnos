@@ -56,3 +56,63 @@ export function formatLongDate(date: string): string {
   const [y, m, d] = date.split("-");
   return `${d}/${m}/${y}`;
 }
+
+/** Suma días a "YYYY-MM-DD". */
+export function addDays(date: string, days: number): string {
+  const [y, m, d] = date.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+}
+
+/** Lunes de la semana de una fecha. */
+export function startOfWeek(date: string): string {
+  const [y, m, d] = date.split("-").map(Number);
+  const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  return addDays(date, dow === 0 ? -6 : 1 - dow);
+}
+
+export const dayOfWeek = (date: string) => {
+  const [y, m, d] = date.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+};
+
+/** Fecha y hora locales de una zona horaria -> ISO UTC (maneja horario de verano). */
+export function zonedToIso(date: string, time: string, timezone: string): string {
+  const [y, m, d] = date.split("-").map(Number);
+  const [h, mi] = time.split(":").map(Number);
+  const guess = Date.UTC(y, m - 1, d, h, mi);
+  const offsetAt = (instant: number) => {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      hourCycle: "h23",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).formatToParts(new Date(instant));
+    const get = (t: string) => Number(parts.find((p) => p.type === t)?.value);
+    return Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute")) - instant;
+  };
+  let utc = guess - offsetAt(guess);
+  utc = guess - offsetAt(utc);
+  return new Date(utc).toISOString();
+}
+
+const monthFormatter = new Intl.DateTimeFormat("es-AR", { month: "long", year: "numeric", timeZone: "UTC" });
+export function formatMonthYear(date: string): string {
+  const [y, m, d] = date.split("-").map(Number);
+  const s = monthFormatter.format(new Date(Date.UTC(y, m - 1, d, 12)));
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/** Minutos transcurridos del día en una zona horaria. */
+export function nowMinutesIn(timezone: string): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    hourCycle: "h23",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).formatToParts(new Date());
+  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value);
+  return get("hour") * 60 + get("minute");
+}
