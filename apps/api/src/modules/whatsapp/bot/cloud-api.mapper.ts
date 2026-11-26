@@ -50,6 +50,7 @@ export interface CloudApiInboundMessage {
     list_reply?: { id: string; title: string; description?: string };
   };
   button?: { payload: string; text: string };
+  audio?: { id: string; mime_type?: string; voice?: boolean };
 }
 
 /**

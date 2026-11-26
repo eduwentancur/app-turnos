@@ -3,6 +3,7 @@ import request from 'supertest';
 import { CloudApiClient } from '../src/modules/whatsapp/cloud-api.client.js';
 import { WhatsappAccountResolver, type WhatsappAccount } from '../src/modules/whatsapp/whatsapp-account.resolver.js';
 import { sign } from '../src/modules/whatsapp/webhook-signature.js';
+import { AudioTooLongError, TRANSCRIBER } from '../src/modules/whatsapp/audio/transcriber.js';
 import type { OutgoingMessage } from '../src/modules/whatsapp/bot/messages.js';
 import { createTestApp } from './utils/create-test-app.js';
 import { createTenant, type TestTenant } from './utils/fixtures.js';
@@ -25,6 +26,12 @@ describe('Webhook de WhatsApp (e2e)', () => {
     markAsRead: vi.fn(async (_acc: WhatsappAccount, id: string) => {
       read.push(id);
     }),
+    downloadMedia: vi.fn(async () => new Uint8Array([1, 2, 3])),
+  };
+  const transcriber = {
+    enabled: true,
+    transcribeVoiceNote: vi.fn(async () => ({ text: 'Hola, ¿cuánto sale el corte?', seconds: 3 })),
+    transcribePcm: vi.fn(async (samples: Float32Array) => ({ text: 'quiero cancelar mi turno', seconds: samples.length / 16000 })),
   };
   const resolver = {
     isConfigured: () => true,
@@ -36,7 +43,13 @@ describe('Webhook de WhatsApp (e2e)', () => {
     process.env.WHATSAPP_VERIFY_TOKEN = VERIFY;
     app = await createTestApp({
       customize: (b) =>
-        b.overrideProvider(CloudApiClient).useValue(client).overrideProvider(WhatsappAccountResolver).useValue(resolver),
+        b
+          .overrideProvider(CloudApiClient)
+          .useValue(client)
+          .overrideProvider(WhatsappAccountResolver)
+          .useValue(resolver)
+          .overrideProvider(TRANSCRIBER)
+          .useValue(transcriber),
     });
     tenant = await createTenant(app);
     account = { barbershopId: tenant.barbershopId, phoneNumberId: PHONE_NUMBER_ID, accessToken: 'x' };
@@ -125,16 +138,43 @@ describe('Webhook de WhatsApp (e2e)', () => {
     expect(reply.type === 'buttons' && reply.body).toContain('servicios');
   });
 
-  it('explica que no entiende audios o imágenes', async () => {
-    await post(payload({ id: 'wamid.A3', type: 'audio', audio: { id: 'm1' } })).expect(200);
+  it('transcribe las notas de voz y responde a lo que pidió', async () => {
+    await post(payload({ id: 'wamid.A3', type: 'audio', audio: { id: 'media-1', voice: true } })).expect(200);
     await waitFor(() => sent.length === 3);
-    const reply = sent[2].messages[0];
-    expect(reply.type === 'buttons' && reply.body).toContain('solo entiendo');
+    expect(client.downloadMedia).toHaveBeenCalledWith(expect.anything(), 'media-1');
+    const [heard, answer] = sent[2].messages;
+    expect(heard.type === 'text' && heard.text).toBe('🎧 Entendí: "Hola, ¿cuánto sale el corte?"');
+    // "¿cuánto sale?" = intención de ver precios (esta barbería de prueba no tiene servicios)
+    expect(answer.type === 'buttons' && answer.body).toContain('servicios');
+  });
+
+  it('avisa si el audio es muy largo y explica que no entiende imágenes', async () => {
+    transcriber.transcribeVoiceNote.mockRejectedValueOnce(new AudioTooLongError(200, 90));
+    await post(payload({ id: 'wamid.A5', type: 'audio', audio: { id: 'media-2' } })).expect(200);
+    await waitFor(() => sent.length === 4);
+    expect(sent[3].messages[0].type === 'buttons' && sent[3].messages[0].body).toContain('menos de 90 segundos');
+
+    await post(payload({ id: 'wamid.A6', type: 'image', image: { id: 'img' } })).expect(200);
+    await waitFor(() => sent.length === 5);
+    expect(sent[4].messages[0].type === 'buttons' && sent[4].messages[0].body).toContain('solo entiendo');
+  });
+
+  it('simulador: transcribe un audio grabado en el navegador', async () => {
+    const owner = await tenant.tokenFor('OWNER');
+    const pcm = Buffer.from(new Int16Array(16000).buffer).toString('base64'); // 1 s de silencio
+    const res = await request(app.getHttpServer())
+      .post('/api/whatsapp/simulator/audio')
+      .set('Authorization', `Bearer ${owner}`)
+      .send({ phone: '3764 123123', pcm16: pcm })
+      .expect(200);
+    expect(res.body.transcript).toBe('quiero cancelar mi turno');
+    expect(transcriber.transcribePcm).toHaveBeenCalledWith(expect.any(Float32Array));
+    expect(res.body.replies[0].text).toContain('🎧 Entendí');
   });
 
   it('ignora números no configurados', async () => {
     await post(payload({ id: 'wamid.A4', type: 'text', text: { body: 'hola' } }, '999')).expect(200);
     await new Promise((r) => setTimeout(r, 300));
-    expect(sent).toHaveLength(3);
+    expect(sent).toHaveLength(5);
   });
 });

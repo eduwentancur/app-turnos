@@ -9,3 +9,9 @@ onlyBuiltDependencies:
   - prisma
   - sharp
   - unrs-resolver
+
+# Scripts de instalación que no hacen falta (los binarios vienen incluidos en los paquetes)
+ignoredBuiltDependencies:
+  - esbuild
+  - onnxruntime-node
+  - protobufjs

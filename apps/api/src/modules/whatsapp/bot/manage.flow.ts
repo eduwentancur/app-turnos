@@ -4,7 +4,7 @@ import type { AppointmentResponse } from '../../appointments/appointments.types.
 import { BookingFlow } from './booking.flow.js';
 import { buttons, list, LIMITS } from './messages.js';
 import { shortDate } from './bot.presenter.js';
-import { IDS, prefixed, type FlowResult, type Turn } from './bot.types.js';
+import { IDS, prefixed, type BotContext, type FlowResult, type Turn } from './bot.types.js';
 
 /** "Mis turnos", "Cambiar un turno" y "Cancelar un turno". */
 @Injectable()
@@ -43,7 +43,7 @@ export class ManageFlow {
   }
 
   /** Inicio de cambiar / cancelar: elegir cuál turno (si hay uno solo, se usa directamente). */
-  async start(turn: Turn, mode: 'reschedule' | 'cancel'): Promise<FlowResult> {
+  async start(turn: Turn, mode: 'reschedule' | 'cancel', pref?: BotContext['pref']): Promise<FlowResult> {
     const upcoming = await this.upcoming(turn);
     const verb = mode === 'cancel' ? 'cancelar' : 'cambiar';
     if (upcoming.length === 0) {
@@ -58,7 +58,7 @@ export class ManageFlow {
         ],
       };
     }
-    if (upcoming.length === 1) return this.selected({ ...turn, ctx: { mode } }, upcoming[0]);
+    if (upcoming.length === 1) return this.selected({ ...turn, ctx: { mode, pref } }, upcoming[0]);
 
     const rows = upcoming.slice(0, LIMITS.rowsPerList).map((a) => ({
       id: prefixed('APPT', a.id),
@@ -67,7 +67,7 @@ export class ManageFlow {
     }));
     return {
       state: 'PICK_APPOINTMENT',
-      ctx: { mode },
+      ctx: { mode, pref },
       replies: [list(`¿Qué turno querés ${verb}?`, 'Ver mis turnos', [{ rows }])],
     };
   }
@@ -131,12 +131,13 @@ export class ManageFlow {
         ],
       };
     }
-    return this.booking.askDay(turn, {
+    return this.booking.advance(turn, {
       mode: 'reschedule',
       appointmentId: a.id,
       serviceId: a.service.id,
       barberId: null,
       customerName: a.customer.name,
+      pref: turn.ctx.pref,
     });
   }
 

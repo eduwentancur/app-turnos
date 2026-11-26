@@ -98,9 +98,9 @@ describe('WhatsApp bot (e2e, vía simulador)', () => {
     const day = days.find((d) => d.id === `DAY:${target}`)!;
     expect(day.description).toBe('14 horarios libres');
 
-    // Escribir en vez de tocar una opción repite el paso
-    r = await say('el jueves');
-    expect(bodyOf(r.replies[0])).toContain('Tocá una de las opciones');
+    // Escribir algo que no se entiende repite el paso
+    r = await say('jaja dale');
+    expect(bodyOf(r.replies[0])).toContain('No te entendí');
     expect(last(r.replies).type).toBe('list');
 
     r = await tap(day.id);
@@ -204,6 +204,58 @@ describe('WhatsApp bot (e2e, vía simulador)', () => {
     expect(info).toContain('Carlos Paz 5798, Posadas');
     expect(info).toContain('https://maps.google.com/?q=');
     expect(info).toContain('Lun a Dom: 09:00 a 12:00 y 16:00 a 20:00');
+  });
+
+  describe('texto libre y audios', () => {
+    const WEEKDAYS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+    const [y, m, d] = target.split('-').map(Number);
+    const weekday = WEEKDAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
+    const OTHER = '5493764555111';
+    const as = (message: object) =>
+      request(app.getHttpServer())
+        .post('/api/whatsapp/simulator/messages')
+        .set('Authorization', `Bearer ${owner}`)
+        .send({ phone: OTHER, profileName: 'Ana López', message })
+        .expect(200)
+        .then((res) => res.body as { replies: Reply[] });
+
+    it('un pedido completo por audio va directo al resumen (después del nombre)', async () => {
+      let r = await as({ type: 'text', text: `Hola, quiero un corte de cabello para el ${weekday} tipo 6 de la tarde`, fromAudio: true });
+      expect(bodyOf(r.replies[0])).toContain('🎧 Entendí:');
+      expect(last(r.replies)).toMatchObject({ type: 'buttons', buttons: [{ id: 'NAME:PROFILE' }] });
+
+      r = await as({ type: 'text', text: 'Ana López' });
+      const confirm = last(r.replies);
+      expect(confirm.type).toBe('buttons');
+      expect(bodyOf(confirm)).toContain('Servicio: Corte de cabello');
+      expect(bodyOf(confirm)).toContain(`Fecha: ${targetLong}`);
+      expect(bodyOf(confirm)).toContain('Hora: 18:00');
+
+      r = await as({ type: 'reply', id: 'CONFIRM' });
+      expect(bodyOf(last(r.replies))).toContain('Tu turno quedó confirmado');
+    });
+
+    it('si la hora pedida está ocupada ofrece las más cercanas', async () => {
+      const r = await as({ type: 'text', text: `corte de cabello el ${weekday} a las 18` });
+      expect(bodyOf(r.replies[0])).toContain('A las 18:00 no hay lugar');
+      const times = rowsOf(last(r.replies)).map((x) => x.title);
+      // Muestra la página donde está el horario libre más cercano
+      expect(times).toContain('17:30');
+      expect(times).not.toContain('18:00');
+    });
+
+    it('en medio del flujo entiende "mejor a la mañana"', async () => {
+      const r = await as({ type: 'text', text: 'mejor a la mañana' });
+      const list = last(r.replies);
+      expect(list.type === 'list' && list.sections[0].title).toBe('Mañana');
+    });
+
+    it('intenciones por texto: precios y cancelar', async () => {
+      let r = await as({ type: 'text', text: '¿cuánto sale?' });
+      expect(bodyOf(last(r.replies))).toContain('Servicios y precios');
+      r = await as({ type: 'text', text: 'quiero cancelar mi turno' });
+      expect(last(r.replies)).toMatchObject({ type: 'buttons', buttons: [{ id: 'CANCEL_YES' }, { id: 'CANCEL_NO' }] });
+    });
   });
 
   it('la conversación expira a los 30 minutos', async () => {

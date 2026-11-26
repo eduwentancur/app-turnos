@@ -42,6 +42,13 @@ const envSchema = z.object({
   /** Barbería a la que pertenece el número (por slug) */
   WHATSAPP_BARBERSHOP_SLUG: optional(z.string().min(1)),
   WHATSAPP_GRAPH_VERSION: z.string().regex(/^v\d+\.\d+$/).default('v25.0'),
+
+  // Transcripción de audios (Whisper local, sin costo por uso)
+  TRANSCRIPTION_ENABLED: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
+  TRANSCRIPTION_MODEL: z.string().min(1).default('onnx-community/whisper-small'),
+  /** Carpeta donde se guarda el modelo descargado (~250 MB la primera vez) */
+  TRANSCRIPTION_CACHE_DIR: optional(z.string().min(1)),
+  TRANSCRIPTION_MAX_SECONDS: z.coerce.number().int().min(5).max(300).default(90),
 });
 
 export type Env = z.infer<typeof envSchema>;

@@ -32,6 +32,19 @@ export class CloudApiClient {
     }).catch(() => undefined); // no es crítico
   }
 
+  /** Descarga un archivo multimedia recibido (ej. nota de voz). Máximo 16 MB. */
+  async downloadMedia(account: WhatsappAccount, mediaId: string): Promise<Uint8Array> {
+    const auth = { Authorization: `Bearer ${account.accessToken}` };
+    const meta = await fetch(`${this.baseUrl}/${mediaId}`, { headers: auth, signal: AbortSignal.timeout(10_000) });
+    if (!meta.ok) throw new Error(`No se pudo obtener el audio (${meta.status})`);
+    const { url, file_size } = (await meta.json()) as { url: string; file_size?: number };
+    if (file_size && file_size > 16 * 1024 * 1024) throw new Error('Archivo demasiado grande');
+
+    const file = await fetch(url, { headers: auth, signal: AbortSignal.timeout(20_000) });
+    if (!file.ok) throw new Error(`No se pudo descargar el audio (${file.status})`);
+    return new Uint8Array(await file.arrayBuffer());
+  }
+
   private async post(account: WhatsappAccount, body: Record<string, unknown>): Promise<void> {
     const res = await fetch(`${this.baseUrl}/${account.phoneNumberId}/messages`, {
       method: 'POST',

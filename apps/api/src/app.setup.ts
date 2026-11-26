@@ -12,6 +12,8 @@ export function configureApp(app: NestExpressApplication): void {
   // El panel llega a través del proxy de Next.js (localhost): confiar en X-Forwarded-For
   app.set('trust proxy', 'loopback');
   app.use(cookieParser());
+  // Las notas de voz del simulador viajan en el body (hasta ~90 s de audio)
+  app.useBodyParser('json', { limit: '5mb' });
   app.setGlobalPrefix('api');
   app.enableCors({
     origin: config.get('WEB_ORIGIN', { infer: true }),

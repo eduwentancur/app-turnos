@@ -50,7 +50,7 @@ export type OutgoingMessage = TextMessage | ButtonsMessage | ListMessage;
 
 /** Lo que manda el cliente: texto libre o la respuesta a un botón / lista. */
 export type IncomingMessage =
-  | { type: 'text'; text: string }
+  | { type: 'text'; text: string; /** Texto obtenido al transcribir un audio */ fromAudio?: boolean }
   | { type: 'reply'; id: string; title?: string };
 
 export const truncate = (value: string, max: number): string =>

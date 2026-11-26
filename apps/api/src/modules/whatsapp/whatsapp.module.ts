@@ -12,11 +12,21 @@ import { CloudApiClient } from './cloud-api.client.js';
 import { WebhookController } from './webhook.controller.js';
 import { WebhookService } from './webhook.service.js';
 import { WhatsappAccountResolver } from './whatsapp-account.resolver.js';
+import { LocalWhisperTranscriber, TRANSCRIBER } from './audio/transcriber.js';
 
 @Module({
   imports: [AppointmentsModule, AvailabilityModule, CustomersModule, ScheduleModule, ServicesModule],
   controllers: [SimulatorController, WebhookController],
-  providers: [BotService, BookingFlow, ManageFlow, CloudApiClient, WebhookService, WhatsappAccountResolver],
+  providers: [
+    BotService,
+    BookingFlow,
+    ManageFlow,
+    CloudApiClient,
+    WebhookService,
+    WhatsappAccountResolver,
+    LocalWhisperTranscriber,
+    { provide: TRANSCRIBER, useExisting: LocalWhisperTranscriber },
+  ],
   exports: [BotService],
 })
 export class WhatsappModule {}

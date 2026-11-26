@@ -192,6 +192,20 @@ Estructura (`apps/api/src/modules/whatsapp/`):
 
 Para conectar el número real seguí [docs/whatsapp-setup.md](docs/whatsapp-setup.md).
 
+### Texto libre y audios
+
+- `bot/interpreter.ts`: intérprete por reglas (sin costo) que entiende pedidos en español rioplatense:
+  intención (reservar, cancelar, cambiar, mis turnos, precios, ubicación), servicio, día ("mañana", "el viernes",
+  "el 28", "3/12") y hora ("a las 5", "17hs", "6 y media", "a la tarde"). Lo que entiende se usa para saltear
+  pasos; siempre se termina en el resumen con **Confirmar**. Si la hora pedida está ocupada, ofrece las más cercanas.
+- Notas de voz: se descargan de WhatsApp, se decodifican (OGG/Opus en WebAssembly) y se transcriben con
+  **Whisper en el propio servidor** (`audio/transcriber.ts`, transformers.js + ONNX, sin costo por uso).
+  El bot responde primero con `🎧 Entendí: "..."` para que el cliente vea qué se transcribió.
+- El modelo (`onnx-community/whisper-small`, ~250 MB) se descarga la primera vez que llega un audio, o antes con
+  `pnpm --filter api model:download`. Queda en `apps/api/.cache/models`.
+- En el simulador se puede grabar con el micrófono (🎤).
+- Variables: `TRANSCRIPTION_ENABLED`, `TRANSCRIPTION_MODEL`, `TRANSCRIPTION_MAX_SECONDS` (90 por defecto).
+
 - Mensajes duplicados: cada ID de mensaje se registra en `whatsapp_processed_messages`; si llega de nuevo se ignora.
 - Opciones de mensajes viejos o texto cuando se espera una opción: el bot avisa y repite el paso actual.
 - Si el horario se ocupa entre que el cliente lo elige y confirma, se le ofrecen los horarios actualizados.

@@ -7,6 +7,8 @@ import { ServicesService } from '../../services/services.service.js';
 import { ScheduleService } from '../../schedule/schedule.service.js';
 import type { Prisma } from '../../../generated/prisma/client.js';
 import { BookingFlow } from './booking.flow.js';
+import { interpret, type Interpretation } from './interpreter.js';
+import { utcToLocal } from '../../../common/time.js';
 import { ManageFlow } from './manage.flow.js';
 import { buttons, list, text, type IncomingMessage, type OutgoingMessage } from './messages.js';
 import { duration, firstName, mapsLink, price, weeklyHours } from './bot.presenter.js';
@@ -114,14 +116,10 @@ export class BotService {
   }
 
   private async route(turn: Turn, message: IncomingMessage): Promise<FlowResult> {
-    // Texto libre: saludos / "menú" / números del menú
+    // Texto libre (escrito o transcripto de un audio)
     if (message.type === 'text') {
-      const t = normalizeText(message.text);
-      if (GREETINGS.has(t)) return this.menu(turn);
-      if (turn.state === 'IDLE' && MENU_BY_NUMBER[t]) return this.menuOption(turn, MENU_BY_NUMBER[t]);
-      if (turn.state === 'ASK_NAME') return this.booking.onName(turn, { text: message.text });
-      if (turn.state === 'IDLE') return this.menu(turn);
-      return this.withPrefix('Tocá una de las opciones 👇 (o escribí *menú* para volver al inicio)', this.repeat(turn));
+      const result = await this.handleText(turn, message.text);
+      return message.fromAudio ? this.withPrefix(`🎧 Entendí: "${message.text.trim()}"`, Promise.resolve(result)) : result;
     }
 
     const { prefix, value } = parseReply(message.id);
@@ -171,6 +169,66 @@ export class BotService {
       default:
         return this.manage.onCancelNo();
     }
+  }
+
+  private async handleText(turn: Turn, raw: string): Promise<FlowResult> {
+    const t = normalizeText(raw);
+    if (GREETINGS.has(t)) return this.menu(turn);
+    if (turn.state === 'IDLE' && MENU_BY_NUMBER[t]) return this.menuOption(turn, MENU_BY_NUMBER[t]);
+    if (turn.state === 'ASK_NAME') return this.booking.onName(turn, { text: raw });
+
+    const wish = await this.understand(turn.barbershopId, raw);
+    const hasDetails = Boolean(wish.serviceId || wish.date || wish.time || wish.period);
+    const inBooking = ['PICK_SERVICE', 'PICK_BARBER', 'PICK_DAY', 'PICK_SLOT', 'CONFIRM'].includes(turn.state);
+
+    // En medio de una reserva: "mejor el viernes", "a las 6", "corte y barba"
+    if (inBooking && hasDetails && (!wish.intent || wish.intent === 'book' || wish.intent === 'reschedule')) {
+      const ctx = { ...turn.ctx };
+      if (wish.serviceId && ctx.mode !== 'reschedule' && wish.serviceId !== ctx.serviceId) {
+        ctx.serviceId = wish.serviceId;
+        ctx.barberId = undefined;
+      }
+      const pref = {
+        date: wish.date ?? (wish.time || wish.period ? ctx.date : undefined),
+        time: wish.time,
+        period: wish.period,
+      };
+      return this.booking.advance(turn, {
+        ...ctx,
+        slotStart: undefined,
+        ...(pref.date ? { pref } : {}),
+      });
+    }
+
+    switch (wish.intent) {
+      case 'book':
+        return this.booking.start({ ...turn, state: 'IDLE', ctx: {} }, wish);
+      case 'reschedule':
+        return this.manage.start({ ...turn, state: 'IDLE', ctx: {} }, 'reschedule', hasDetails ? { date: wish.date, time: wish.time, period: wish.period } : undefined);
+      case 'cancel':
+        return this.menuOption(turn, IDS.menu.CANCEL);
+      case 'mine':
+        return this.menuOption(turn, IDS.menu.MINE);
+      case 'services':
+        return this.menuOption(turn, IDS.menu.SERVICES);
+      case 'info':
+        return this.menuOption(turn, IDS.menu.INFO);
+      case 'greeting':
+        return this.menu(turn);
+    }
+
+    const hint =
+      'No te entendí 🤔 Podés tocar una opción, o escribirme (o mandarme un audio) algo como: "quiero un corte mañana a las 17".';
+    return turn.state === 'IDLE' ? this.withPrefix(hint, this.menu(turn)) : this.withPrefix(hint, this.repeat(turn));
+  }
+
+  private async understand(barbershopId: string, text: string): Promise<Interpretation> {
+    const [shop, services] = await Promise.all([
+      this.prisma.barbershop.findUnique({ where: { id: barbershopId }, select: { timezone: true } }),
+      this.services.list(barbershopId, { includeInactive: false }),
+    ]);
+    const today = utcToLocal(new Date(), shop?.timezone ?? 'America/Argentina/Buenos_Aires').date;
+    return interpret(text, { today, services });
   }
 
   private async menuOption(turn: Turn, id: string): Promise<FlowResult> {

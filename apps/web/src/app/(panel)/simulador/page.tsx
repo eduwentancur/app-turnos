@@ -7,6 +7,7 @@ import { BotBubble, ListSheet, Phone, ReplyButtons, UserBubble } from "@/compone
 import { useAuth } from "@/lib/auth/auth-context";
 import { errorMessage, parseApiError } from "@/lib/api-client";
 import type { BotMessage, ChatEntry } from "@/lib/whatsapp/types";
+import { VoiceRecorder } from "@/lib/whatsapp/recorder";
 
 type OpenList = Extract<BotMessage, { type: "list" }> | null;
 
@@ -20,6 +21,51 @@ export default function SimulatorPage() {
   const [openList, setOpenList] = useState<OpenList>(null);
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const recorder = useRef<VoiceRecorder | null>(null);
+  const [recording, setRecording] = useState(false);
+  const [recSeconds, setRecSeconds] = useState(0);
+  const [transcribing, setTranscribing] = useState(false);
+
+  useEffect(() => {
+    if (!recording) return;
+    const started = Date.now();
+    const id = setInterval(() => setRecSeconds(Math.floor((Date.now() - started) / 1000)), 250);
+    return () => clearInterval(id);
+  }, [recording]);
+
+  async function startRecording() {
+    setError(null);
+    try {
+      recorder.current = new VoiceRecorder();
+      await recorder.current.start();
+      setRecSeconds(0);
+      setRecording(true);
+    } catch {
+      setError("No se pudo acceder al micrófono. Revisá los permisos del navegador.");
+    }
+  }
+
+  async function stopRecording() {
+    if (!recorder.current) return;
+    setRecording(false);
+    setTranscribing(true);
+    try {
+      const { pcm16, seconds } = await recorder.current.stop();
+      setChat((c) => [...c, { from: "user", text: `🎤 Audio (${Math.max(1, Math.round(seconds))} s)`, key: nextKey() }]);
+      const res = await apiFetch("/api/whatsapp/simulator/audio", {
+        method: "POST",
+        body: JSON.stringify({ phone, profileName: profileName.trim() || undefined, pcm16 }),
+      });
+      if (!res.ok) throw await parseApiError(res);
+      const { replies } = (await res.json()) as { replies: BotMessage[] };
+      setChat((c) => [...c, ...replies.map((m) => ({ from: "bot" as const, message: m, key: nextKey() }))]);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setTranscribing(false);
+      recorder.current = null;
+    }
+  }
   const counter = useRef(0);
 
   useEffect(() => {
@@ -104,6 +150,9 @@ export default function SimulatorPage() {
           <h2 className="mb-2 font-medium text-stone-900">Cosas para probar</h2>
           <ul className="list-disc space-y-1 pl-5">
             <li>Escribí <em>hola</em> o un número del 1 al 6.</li>
+            <li>
+              Escribí o grabá (🎤) un pedido completo: <em>&quot;quiero un corte mañana a las 5&quot;</em>.
+            </li>
             <li>Reservá un turno y abrí la sección Turnos.</li>
             <li>Escribí texto cuando el bot espera que toques una opción.</li>
             <li>Tocá una opción de una lista vieja.</li>
@@ -119,21 +168,41 @@ export default function SimulatorPage() {
           scrollRef={scrollRef}
           footer={
             <form onSubmit={submit} className="flex items-center gap-2 bg-[#f0f2f5] px-2 py-2">
-              <input
-                aria-label="Mensaje"
-                placeholder="Escribí un mensaje"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                className="flex-1 rounded-full bg-white px-4 py-2 text-sm outline-none"
-              />
-              <button
-                type="submit"
-                aria-label="Enviar"
-                disabled={sending || !input.trim()}
-                className="flex size-9 items-center justify-center rounded-full bg-[#008069] text-white disabled:opacity-50"
-              >
-                ➤
-              </button>
+              {recording ? (
+                <div className="flex flex-1 items-center gap-2 rounded-full bg-white px-4 py-2 text-sm text-red-600">
+                  <span className="size-2 animate-pulse rounded-full bg-red-600" /> Grabando… 0:{String(recSeconds).padStart(2, "0")}
+                </div>
+              ) : (
+                <input
+                  aria-label="Mensaje"
+                  placeholder="Escribí un mensaje"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  className="flex-1 rounded-full bg-white px-4 py-2 text-sm outline-none"
+                />
+              )}
+              {input.trim() && !recording ? (
+                <button
+                  type="submit"
+                  aria-label="Enviar"
+                  disabled={sending}
+                  className="flex size-9 items-center justify-center rounded-full bg-[#008069] text-white disabled:opacity-50"
+                >
+                  ➤
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  aria-label={recording ? "Enviar audio" : "Grabar audio"}
+                  disabled={sending || transcribing}
+                  onClick={() => void (recording ? stopRecording() : startRecording())}
+                  className={`flex size-9 items-center justify-center rounded-full text-white disabled:opacity-50 ${
+                    recording ? "bg-red-600" : "bg-[#008069]"
+                  }`}
+                >
+                  {recording ? "➤" : "🎤"}
+                </button>
+              )}
             </form>
           }
         >
@@ -161,6 +230,11 @@ export default function SimulatorPage() {
             );
           })}
           {sending && <p className="text-center text-xs text-stone-500">escribiendo…</p>}
+          {transcribing && (
+            <p className="text-center text-xs text-stone-500">
+              🎧 escuchando el audio… (la primera vez puede tardar unos minutos: se descarga el modelo)
+            </p>
+          )}
           {openList && (
             <ListSheet
               title={openList.button}

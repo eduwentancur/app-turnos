@@ -1,10 +1,12 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { BotService } from './bot/bot.service.js';
 import { fromCloudApiMessage, type CloudApiInboundMessage } from './bot/cloud-api.mapper.js';
 import { buttons } from './bot/messages.js';
 import { IDS } from './bot/bot.types.js';
 import { CloudApiClient } from './cloud-api.client.js';
-import { WhatsappAccountResolver } from './whatsapp-account.resolver.js';
+import { WhatsappAccountResolver, type WhatsappAccount } from './whatsapp-account.resolver.js';
+import { AudioTooLongError, TRANSCRIBER, type Transcriber } from './audio/transcriber.js';
+import type { IncomingMessage, OutgoingMessage } from './bot/messages.js';
 
 /** Subconjunto del payload de webhooks de WhatsApp que usamos. */
 export interface WebhookPayload {
@@ -30,6 +32,7 @@ export class WebhookService {
     private readonly accounts: WhatsappAccountResolver,
     private readonly bot: BotService,
     private readonly client: CloudApiClient,
+    @Inject(TRANSCRIBER) private readonly transcriber: Transcriber,
   ) {}
 
   /** Procesa todos los mensajes de un webhook. Los errores se registran sin cortar el resto. */
@@ -61,13 +64,11 @@ export class WebhookService {
             const profileName = value.contacts?.find((c) => c.wa_id === message.from)?.profile?.name;
             await this.client.markAsRead(account, message.id);
 
-            const incoming = fromCloudApiMessage(message);
-            if (!incoming) {
-              await this.client.sendAll(account, message.from, [
-                buttons('Por ahora solo entiendo mensajes de texto y las opciones del menú 🙏', [
-                  { id: IDS.menu.HOME, title: 'Ver el menú' },
-                ]),
-              ]);
+            const incoming =
+              message.type === 'audio' && message.audio ? await this.fromAudio(account, message.audio.id) : fromCloudApiMessage(message);
+            if (!incoming || 'reply' in incoming) {
+              const reply = incoming && 'reply' in incoming ? incoming.reply : this.unsupported();
+              await this.client.sendAll(account, message.from, [reply]);
               continue;
             }
 
@@ -87,5 +88,41 @@ export class WebhookService {
         }
       }
     }
+  }
+
+  /** Descarga y transcribe una nota de voz. Si no se puede, devuelve la respuesta para el cliente. */
+  private async fromAudio(
+    account: WhatsappAccount,
+    mediaId: string,
+  ): Promise<IncomingMessage | { reply: OutgoingMessage }> {
+    if (!this.transcriber.enabled) return { reply: this.unsupported() };
+    try {
+      const audio = await this.client.downloadMedia(account, mediaId);
+      const { text } = await this.transcriber.transcribeVoiceNote(audio);
+      if (!text) return { reply: this.notUnderstood() };
+      return { type: 'text', text, fromAudio: true };
+    } catch (error) {
+      if (error instanceof AudioTooLongError) {
+        return {
+          reply: buttons(`El audio es un poco largo 😅 Mandame uno de menos de ${error.max} segundos, o escribime.`, [
+            { id: IDS.menu.HOME, title: 'Ver el menú' },
+          ]),
+        };
+      }
+      this.logger.error('No se pudo transcribir un audio', error instanceof Error ? error.stack : String(error));
+      return { reply: this.notUnderstood() };
+    }
+  }
+
+  private unsupported(): OutgoingMessage {
+    return buttons('Por ahora solo entiendo mensajes de texto, audios y las opciones del menú 🙏', [
+      { id: IDS.menu.HOME, title: 'Ver el menú' },
+    ]);
+  }
+
+  private notUnderstood(): OutgoingMessage {
+    return buttons('No pude escuchar bien el audio 🙉 ¿Me lo escribís o probás de nuevo?', [
+      { id: IDS.menu.HOME, title: 'Ver el menú' },
+    ]);
   }
 }

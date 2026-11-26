@@ -1,4 +1,5 @@
 import type { IncomingMessage, OutgoingMessage } from './messages.js';
+import type { DayPeriod } from './interpreter.js';
 
 export type BotState =
   | 'IDLE'
@@ -25,6 +26,8 @@ export interface BotContext {
   slotTime?: string;
   slotBarberId?: string;
   appointmentId?: string;
+  /** Lo que el cliente pidió en texto libre o audio y todavía no se aplicó */
+  pref?: { date?: string; time?: string; period?: DayPeriod };
 }
 
 /** Todo lo que el bot sabe en cada mensaje. */
